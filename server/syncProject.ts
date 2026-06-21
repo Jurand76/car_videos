@@ -24,18 +24,17 @@ export type GenerateInput = {
   audioDurationSeconds?: number | null;
   syncToMusic?: boolean;
   syncMode?: SyncMode;
+  /** Flow animacji — nie nadpisuj title/subtitle/sceneLabel. */
+  preserveSlideCopy?: boolean;
 };
 
 const resolveSlideBeats = (
   slides: ProjectManifest["slides"],
   defaultBeats: number,
-): number[] => {
-  const hasCustom = slides.some((s) => s.beats != null && s.beats > 0);
-  if (!hasCustom) {
-    return assignVariedBeats(slides.length, defaultBeats);
-  }
-  return slides.map((s) => s.beats ?? defaultBeats);
-};
+): number[] => assignVariedBeats(slides.length, defaultBeats);
+
+export const resolveBaseBeats = (input: GenerateInput): number =>
+  input.beatsPerSlide ?? guessBeatsPerSlide(input.prompt);
 
 export const applyMusicSync = async (
   manifest: ProjectManifest,
@@ -64,8 +63,7 @@ export const applyMusicSync = async (
   }
 
   const syncMode: SyncMode = input.syncMode ?? "beats";
-  const defaultBeats =
-    input.beatsPerSlide ?? guessBeatsPerSlide(input.prompt);
+  const defaultBeats = resolveBaseBeats(input);
   const slideBeats = resolveSlideBeats(manifest.slides, defaultBeats);
 
   let audioDurationSeconds = input.audioDurationSeconds ?? null;

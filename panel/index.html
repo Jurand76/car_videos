@@ -14,23 +14,89 @@
           <a id="hub-home-link" href="/hub">Start</a>
           <a id="photos-link" href="/dashboard">Zdjęcia</a>
           <span class="site-nav-active">Wideo</span>
+          <span id="user-email" class="site-user-email"></span>
+          <form id="logout-form" class="site-logout-form" method="post" action="/api/auth/signout">
+            <input type="hidden" name="callbackUrl" value="/login" />
+            <button type="submit" class="btn btn-secondary btn-header">Wyloguj</button>
+          </form>
         </nav>
       </div>
     </header>
 
     <div class="app">
+      <div id="view-projects" class="view-projects">
+        <div class="page-intro">
+          <h1 class="page-title">Videoprezentacja</h1>
+          <p class="page-lead">
+            Twórz dynamiczne rolki i slideshowy samochodowe zsynchronizowane z muzyką.
+          </p>
+        </div>
+
+        <section class="create-project-section">
+          <div class="card create-project-card">
+            <div class="create-project-row">
+              <div class="create-project-copy">
+                <h2 class="section-title">Stwórz nowy projekt</h2>
+                <p class="section-lead">Nowy projekt zaczyna od pustej listy slajdów — wrzucisz zdjęcia w edytorze.</p>
+              </div>
+              <div class="create-project-actions">
+                <button class="btn create-project-btn" id="create-project-btn" type="button">
+                  Nowy projekt wideo
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page-section">
+          <h2 class="section-title">Projekty użytkownika</h2>
+          <p class="section-lead">Twoje zapisane projekty wideo i ich status.</p>
+          <p id="projects-error" class="status err" hidden></p>
+          <div id="user-projects-list" class="projects-grid"></div>
+        </section>
+
+        <section class="page-section">
+          <h2 class="section-title">Baza video</h2>
+          <p class="section-lead">
+            Gotowe rendery wideo — każdy kafelek otwiera Remotion Studio.
+          </p>
+          <div id="video-library-grid" class="video-library-grid"></div>
+        </section>
+      </div>
+
+      <div id="view-editor" class="view-editor" hidden>
+        <div class="editor-topbar">
+          <button class="btn btn-ghost editor-back-btn" id="back-to-projects" type="button">← Projekty</button>
+        </div>
+
+        <section class="card editor-project-bar">
+          <div class="editor-project-save-row">
+            <label class="field editor-project-name-field">
+              <span>Nazwa projektu</span>
+              <input type="text" id="editor-project-name-input" autocomplete="off" placeholder="Nazwa projektu wideo" />
+            </label>
+            <div class="editor-save-actions">
+              <span id="save-project-status" class="editor-save-status" aria-live="polite"></span>
+              <button class="btn btn-secondary editor-save-btn" id="save-project-btn" type="button" disabled>
+                Zapisz
+              </button>
+            </div>
+          </div>
+          <p id="editor-project-meta" class="muted editor-project-meta"></p>
+        </section>
+
       <main class="grid">
         <section class="card card-wide assets-card">
           <h2>1. Assety</h2>
 
           <div class="assets-layout assets-layout--single">
-            <div class="assets-uploads">
-              <h3 class="assets-col-title">Ładowanie plików</h3>
+            <h3 class="assets-col-title assets-layout-heading">Ładowanie plików</h3>
 
+            <div class="assets-uploads">
               <div class="upload-grid">
                 <label class="dropzone dropzone-exterior" id="image-drop-exterior">
                   <input type="file" id="image-input-exterior" accept="image/*" multiple hidden />
-                  <strong>Zewnątrz auta</strong>
+                  <strong>Auto z zewnątrz</strong>
                   <span>Przód, profil, felgi, lampy…</span>
                 </label>
 
@@ -41,17 +107,19 @@
                 </label>
               </div>
 
-              <label class="dropzone" id="image-drop">
-                <input type="file" id="image-input" accept="image/*" multiple hidden />
-                <strong>Inne zdjęcia</strong>
-                <span>Detale, silnik, cokolwiek — typ ustawisz na kafelku slajdu</span>
-              </label>
+              <div class="upload-grid">
+                <label class="dropzone dropzone-other" id="image-drop">
+                  <input type="file" id="image-input" accept="image/*" multiple hidden />
+                  <strong>Inne zdjęcia</strong>
+                  <span>Silnik, inne detale</span>
+                </label>
 
-              <label class="dropzone dropzone-audio" id="audio-drop">
-                <input type="file" id="audio-input" accept="audio/*" hidden />
-                <strong>Muzyka (opcjonalnie)</strong>
-                <span>MP3, WAV, M4A → zapis w public/uploads/audio/</span>
-              </label>
+                <label class="dropzone dropzone-audio" id="audio-drop">
+                  <input type="file" id="audio-input" accept="audio/*" hidden />
+                  <strong>Muzyka (opcjonalnie)</strong>
+                  <span>MP3, WAV, M4A</span>
+                </label>
+              </div>
               <p id="audio-name" class="muted"></p>
               <p id="audio-meta" class="muted sync-meta"></p>
               <p id="beat-meta" class="muted beat-meta"></p>
@@ -100,16 +168,22 @@
                   <input type="checkbox" id="sync-to-music" checked />
                   <span>Synchronizuj slajdy z muzyką</span>
                 </label>
-                <p class="sync-hint muted">
-                  Flow: slajd → tekst → zoom in → zoom out → cięcie. AI ustawia zróżnicowane beats per slajd.
-                </p>
               </div>
             </div>
           </div>
         </section>
 
-        <section class="card card-wide">
-          <h2>2. Slajdy i teksty</h2>
+        <section class="card card-wide slides-section">
+          <button
+            type="button"
+            id="slides-section-toggle"
+            class="slides-section-toggle"
+            aria-expanded="false"
+            aria-controls="slides-section-body"
+          >
+            <span class="slides-section-title">2. Slajdy i teksty</span>
+            <span class="slides-section-chevron" aria-hidden="true">▾</span>
+          </button>
 
           <div class="content-mode" role="radiogroup" aria-label="Tryb treści slajdów">
             <label class="mode-option">
@@ -128,6 +202,7 @@
             </label>
           </div>
 
+          <div id="slides-section-body" class="slides-section-body" hidden>
           <div id="info-text-block" class="info-text-block" hidden>
             <label class="field field-wide">
               <span>Opis auta / parametry techniczne</span>
@@ -138,7 +213,7 @@
               ></textarea>
             </label>
             <p class="muted sync-hint">
-              Opisz parametry poniżej — AI ułoży teksty w stylu redakcji motoryzacyjnej (Auto Świat / Top Gear). Przy każdym zdjęciu wpisz <strong>co widać na kadru</strong>.
+              Wklej opis auta i przy każdym zdjęciu wpisz <strong>co widać na zdjęciu</strong>, potem kliknij <strong>Generuj opisy</strong>. Flow animacji (krok 3) nie zmienia już tych tekstów.
             </p>
           </div>
 
@@ -147,6 +222,14 @@
           </p>
 
           <div id="slides-list" class="slides-grid"></div>
+          </div>
+
+          <div id="generate-descriptions-block" class="generate-action-block generate-descriptions-block" hidden>
+            <button type="button" class="btn btn-primary" id="generate-descriptions-btn">
+              Generuj opisy
+            </button>
+            <p id="descriptions-status" class="generate-action-status" aria-live="polite"></p>
+          </div>
         </section>
 
         <section class="card card-wide">
@@ -169,17 +252,40 @@
             </button>
           </div>
 
-          <button class="btn btn-primary" id="generate-btn" type="button">
-            Generuj flow animacji
-          </button>
-          <p id="status" class="status muted"></p>
+          <div class="generate-action-block generate-flow-block">
+            <button class="btn btn-primary" id="generate-btn" type="button">
+              Generuj flow animacji
+            </button>
+            <p id="status" class="generate-action-status" aria-live="polite"></p>
+          </div>
         </section>
 
         <section class="card card-wide">
           <h2>4. Ostatni manifest</h2>
           <pre id="manifest-preview" class="manifest">Ładowanie...</pre>
+          <a class="btn btn-primary" id="studio-link" href="#" target="_blank" rel="noopener noreferrer">
+            Otwórz Remotion Studio
+          </a>
         </section>
       </main>
+      </div>
+    </div>
+
+    <div id="project-delete-modal" class="modal" hidden aria-hidden="true">
+      <div class="modal-backdrop" data-project-modal-close></div>
+      <div class="modal-panel modal-panel--compact" role="dialog" aria-modal="true">
+        <header class="modal-header">
+          <h3>Usuń projekt</h3>
+          <button type="button" class="modal-close" data-project-modal-close aria-label="Zamknij">✕</button>
+        </header>
+        <div class="modal-body">
+          <p id="project-delete-text" class="modal-hint"></p>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" data-project-modal-close>Anuluj</button>
+            <button type="button" class="btn btn-danger" id="project-delete-confirm">Usuń</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div id="slide-modal" class="modal" hidden aria-hidden="true">

@@ -11,6 +11,14 @@ let audioDurationSeconds = null;
 let detectedBpm = null;
 /** @type {{ bpm: number, beatCount: number, confidence: number, accentCount?: number, analyzer?: string } | null} */
 let beatAnalysis = null;
+/** @type {string | null} */
+let activeProjectId = null;
+/** @type {{ id: string, name: string, status: string, updatedAt: string, slideCount: number, thumbnailImage: string | null, prompt: string }[]} */
+let videoProjects = [];
+/** @type {{ id: string, name: string } | null} */
+let deleteProjectTarget = null;
+/** @type {Record<string, unknown> | null} */
+let persistedManifestMeta = null;
 
 const formatDuration = (seconds) => {
   const m = Math.floor(seconds / 60);
@@ -73,6 +81,359 @@ const publicAssetUrl = (relativePath) => {
   return `${window.location.origin}/public/${clean}`;
 };
 
+const getProjectIdFromUrl = () => new URLSearchParams(window.location.search).get("project");
+
+const setProjectInUrl = (projectId) => {
+  const url = new URL(window.location.href);
+  if (projectId) {
+    url.searchParams.set("project", projectId);
+  } else {
+    url.searchParams.delete("project");
+  }
+  window.history.replaceState({}, "", url);
+};
+
+const formatPlDateTime = (iso) => {
+  try {
+    return new Date(iso).toLocaleString("pl-PL", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+};
+
+const projectStatusLabel = (status) => {
+  if (status === "ready") return "Gotowy";
+  return "Szkic";
+};
+
+const showProjectsView = () => {
+  $("view-projects").hidden = false;
+  $("view-editor").hidden = true;
+  document.title = "AUTKA.PL — Videoprezentacja";
+  setProjectInUrl(null);
+  activeProjectId = null;
+  persistedManifestMeta = null;
+  updateSaveProjectButton();
+};
+
+const showEditorView = (project) => {
+  $("view-projects").hidden = true;
+  $("view-editor").hidden = false;
+  $("editor-project-name-input").value = project.name;
+  $("editor-project-meta").textContent = `${project.slideCount} slajdów · ostatnia zmiana ${formatPlDateTime(project.updatedAt)}`;
+  document.title = `${project.name} — AUTKA.PL Wideo`;
+};
+
+const TRASH_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="project-card-delete-icon" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`;
+
+const IMAGE_PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="project-card-thumb-icon" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m21 15-5-5L8 18"/></svg>`;
+
+const renderProjectThumbnail = (thumbnailImage, className) => {
+  if (!thumbnailImage) {
+    return `<div class="${className}-placeholder">${IMAGE_PLACEHOLDER_SVG}</div>`;
+  }
+  return `<img src="${publicAssetUrl(thumbnailImage)}" alt="" loading="lazy" decoding="async" />`;
+};
+
+const renderVideoLibrary = () => {
+  const library = $("video-library-grid");
+  if (!library) return;
+  library.innerHTML =
+    '<div class="empty">Brak gotowych renderów. Po wyrenderowaniu wideo kafelki pojawią się tutaj i otworzą Remotion Studio.</div>';
+};
+
+const renderProjectsDashboard = () => {
+  const list = $("user-projects-list");
+  const errorEl = $("projects-error");
+
+  renderVideoLibrary();
+
+  if (!videoProjects.length) {
+    list.innerHTML =
+      '<div class="empty">Nie masz jeszcze żadnych projektów wideo. Kliknij „Nowy projekt wideo”.</div>';
+    return;
+  }
+
+  if (errorEl) errorEl.hidden = true;
+
+  list.innerHTML = videoProjects
+    .map(
+      (project) => `
+      <article class="project-card" data-project-id="${project.id}">
+        <div class="project-card-body">
+          <button type="button" class="project-card-open" data-open-project="${project.id}">
+            <div class="project-card-title">${escapeHtml(project.name)}</div>
+            <div class="project-card-meta">Ostatnia zmiana: ${escapeHtml(formatPlDateTime(project.updatedAt))}</div>
+          </button>
+          <div class="project-card-badges">
+            <span class="project-badge project-badge--video">Wideo</span>
+            <span class="project-badge project-badge--status">${escapeHtml(projectStatusLabel(project.status))}</span>
+            <button type="button" class="project-card-delete" data-delete-project="${project.id}" aria-label="Usuń projekt ${escapeHtml(project.name)}">${TRASH_ICON_SVG}</button>
+          </div>
+        </div>
+        <div class="project-card-thumb">
+          ${renderProjectThumbnail(project.thumbnailImage, "project-card-thumb")}
+        </div>
+      </article>
+    `,
+    )
+    .join("");
+
+  list.querySelectorAll("[data-open-project]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      openProject(btn.getAttribute("data-open-project"));
+    });
+  });
+  list.querySelectorAll("[data-delete-project]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const project = videoProjects.find((item) => item.id === btn.getAttribute("data-delete-project"));
+      if (project) openDeleteProjectModal(project);
+    });
+  });
+};
+
+const loadVideoProjects = async () => {
+  const res = await fetch("/api/video-projects");
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Nie udało się wczytać projektów wideo.");
+  }
+  videoProjects = data.projects ?? [];
+  renderProjectsDashboard();
+};
+
+const createVideoProject = async () => {
+  const res = await fetch("/api/video-projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Nie udało się utworzyć projektu.");
+  }
+  videoProjects.unshift(data.project);
+  renderProjectsDashboard();
+  await openProject(data.project.id);
+};
+
+const buildManifestFromEditor = () => ({
+  version: 1,
+  prompt: $("prompt").value.trim(),
+  contentMode: getContentMode(),
+  infoText: $("info-text").value.trim(),
+  generatedAt: new Date().toISOString(),
+  generatedBy: persistedManifestMeta?.generatedBy ?? "heuristic",
+  fps: persistedManifestMeta?.fps ?? 30,
+  width: persistedManifestMeta?.width ?? 1280,
+  height: persistedManifestMeta?.height ?? 720,
+  slideDuration: persistedManifestMeta?.slideDuration ?? 90,
+  transitionDuration: persistedManifestMeta?.transitionDuration ?? 20,
+  kenBurns: persistedManifestMeta?.kenBurns ?? true,
+  audio: audioPath,
+  audioVolume: persistedManifestMeta?.audioVolume ?? 0.7,
+  slides,
+  useAllPublicImages: $("use-all-public").checked,
+  slideTimings: persistedManifestMeta?.slideTimings,
+  totalDurationFrames: persistedManifestMeta?.totalDurationFrames,
+  sync: {
+    ...(persistedManifestMeta?.sync ?? {}),
+    enabled: $("sync-to-music").checked,
+    mode: $("sync-mode").value,
+    beatsPerSlide: Number($("beats-per-slide").value) || 16,
+    bpm: $("bpm").value.trim()
+      ? Number($("bpm").value)
+      : (detectedBpm ?? beatAnalysis?.bpm ?? persistedManifestMeta?.sync?.bpm ?? null),
+    beatCount: beatAnalysis?.beatCount ?? persistedManifestMeta?.sync?.beatCount ?? null,
+    confidence: beatAnalysis?.confidence ?? persistedManifestMeta?.sync?.confidence ?? null,
+    audioDurationSeconds:
+      audioDurationSeconds ?? persistedManifestMeta?.sync?.audioDurationSeconds ?? 0,
+  },
+});
+
+const setSaveProjectStatus = (message, type = "") => {
+  const el = $("save-project-status");
+  if (!el) return;
+  el.textContent = message;
+  el.className = `editor-save-status${type ? ` ${type}` : ""}`;
+};
+
+const updateSaveProjectButton = () => {
+  const btn = $("save-project-btn");
+  if (btn) btn.disabled = !activeProjectId;
+};
+
+const saveCurrentProjectDraft = async () => {
+  if (!activeProjectId) return;
+
+  const nameInput = $("editor-project-name-input");
+  const name = nameInput?.value.trim();
+  if (!name) {
+    throw new Error("Podaj nazwę projektu.");
+  }
+
+  const current = videoProjects.find((item) => item.id === activeProjectId);
+  if (current && current.name !== name) {
+    const renameRes = await fetch(`/api/video-projects/${encodeURIComponent(activeProjectId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const renameData = await renameRes.json();
+    if (!renameRes.ok) {
+      throw new Error(renameData.error ?? "Nie udało się zapisać nazwy projektu.");
+    }
+    if (renameData.project) {
+      videoProjects = videoProjects.map((item) =>
+        item.id === renameData.project.id ? renameData.project : item,
+      );
+      document.title = `${renameData.project.name} — AUTKA.PL Wideo`;
+    }
+  }
+
+  const manifest = buildManifestFromEditor();
+  const res = await fetch(`/api/video-projects/${encodeURIComponent(activeProjectId)}/manifest`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(manifest),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Nie udało się zapisać projektu.");
+  }
+  persistedManifestMeta = manifest;
+  $("manifest-preview").textContent = JSON.stringify(manifest, null, 2);
+  if (data.project) {
+    videoProjects = videoProjects.map((item) =>
+      item.id === data.project.id ? data.project : item,
+    );
+    $("editor-project-meta").textContent = `${data.project.slideCount} slajdów · ostatnia zmiana ${formatPlDateTime(data.project.updatedAt)}`;
+  }
+};
+
+const resetEditorState = () => {
+  persistedManifestMeta = null;
+  slides = [];
+  audioPath = null;
+  audioDurationSeconds = null;
+  detectedBpm = null;
+  beatAnalysis = null;
+  $("prompt").value = "";
+  $("info-text").value = "";
+  $("audio-name").textContent = "";
+  $("audio-meta").textContent = "";
+  $("beat-meta").textContent = "";
+  $("manifest-preview").textContent = "";
+  $("bpm").value = "";
+  $("sync-to-music").checked = true;
+  $("sync-mode").value = "beats";
+  $("beats-per-slide").value = "16";
+  $("use-all-public").checked = false;
+  setContentMode("manual");
+  updateAudioMeta();
+  renderSlides();
+  updateSlideCountHint();
+  setSlidesSectionExpanded(false);
+};
+
+const applyManifestToEditor = (project) => {
+  resetEditorState();
+  persistedManifestMeta = project;
+  $("prompt").value = project.prompt ?? "";
+  setContentMode(project.contentMode ?? "manual");
+  $("info-text").value = project.infoText ?? "";
+  slides = project.slides ?? [];
+  audioPath = project.audio ?? null;
+  audioDurationSeconds = project.sync?.audioDurationSeconds ?? null;
+  detectedBpm = project.sync?.bpm ?? null;
+  if (audioPath) {
+    $("audio-name").textContent = `Audio: ${audioPath}`;
+  }
+  $("beats-per-slide").value = String(project.sync?.beatsPerSlide ?? 16);
+  if (project.sync?.mode) {
+    $("sync-mode").value = project.sync.mode;
+  }
+  if (project.sync?.bpm) {
+    $("bpm").value = String(project.sync.bpm);
+  }
+  $("use-all-public").checked = project.useAllPublicImages === true;
+  if (project.sync?.beatCount && project.sync?.bpm) {
+    beatAnalysis = {
+      bpm: project.sync.bpm,
+      beatCount: project.sync.beatCount,
+      confidence: project.sync.confidence ?? 0.7,
+    };
+  }
+  $("sync-to-music").checked = project.sync?.enabled !== false;
+  updateAudioMeta();
+  renderSlides();
+  updateSlideCountHint();
+  $("manifest-preview").textContent = JSON.stringify(project, null, 2);
+};
+
+const openProject = async (projectId, options = {}) => {
+  if (!projectId) return;
+  const summary = videoProjects.find((item) => item.id === projectId);
+  if (!summary) {
+    await loadVideoProjects();
+  }
+  const projectSummary = videoProjects.find((item) => item.id === projectId);
+  if (!projectSummary) return;
+
+  activeProjectId = projectId;
+  if (!options.skipUrl) {
+    setProjectInUrl(projectId);
+  }
+  showEditorView(projectSummary);
+  updateSaveProjectButton();
+  setSaveProjectStatus("");
+
+  const res = await fetch(`/api/project?projectId=${encodeURIComponent(projectId)}`);
+  if (res.ok) {
+    applyManifestToEditor(await res.json());
+    return;
+  }
+
+  resetEditorState();
+  $("manifest-preview").textContent = "Nowy projekt — wrzuć zdjęcia i wygeneruj flow.";
+};
+
+const openDeleteProjectModal = (project) => {
+  deleteProjectTarget = { id: project.id, name: project.name };
+  $("project-delete-text").textContent = `Na pewno usunąć projekt „${project.name}”? Tej operacji nie cofniesz.`;
+  const modal = $("project-delete-modal");
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+};
+
+const closeDeleteProjectModal = () => {
+  deleteProjectTarget = null;
+  const modal = $("project-delete-modal");
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+};
+
+const confirmDeleteProject = async () => {
+  if (!deleteProjectTarget) return;
+  const res = await fetch(`/api/video-projects/${encodeURIComponent(deleteProjectTarget.id)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Nie udało się usunąć projektu.");
+  }
+  videoProjects = videoProjects.filter((item) => item.id !== deleteProjectTarget.id);
+  closeDeleteProjectModal();
+  renderProjectsDashboard();
+};
+
 const getContentMode = () => {
   const selected = document.querySelector('input[name="content-mode"]:checked');
   return /** @type {"manual" | "fromText"} */ (
@@ -83,7 +444,63 @@ const getContentMode = () => {
 const updateContentModeUi = () => {
   const fromText = getContentMode() === "fromText";
   $("info-text-block").hidden = !fromText;
+  const descBlock = $("generate-descriptions-block");
+  if (descBlock) descBlock.hidden = !fromText;
+  if (editingSlideIndex != null && slides[editingSlideIndex]) {
+    refreshSlideModalForContentMode();
+    updateSlideTileInGrid(editingSlideIndex);
+    return;
+  }
   renderSlides();
+};
+
+const refreshSlideModalForContentMode = () => {
+  const body = $("slide-modal-body");
+  if (!body || editingSlideIndex == null) return;
+
+  const fromText = getContentMode() === "fromText";
+  const sceneField = body.querySelector(".modal-field-scene-label");
+  const sceneInput = body.querySelector("input[data-field='sceneLabel']");
+  const titleField = body.querySelector(".modal-field-title");
+  const subtitleField = body.querySelector(".modal-field-subtitle");
+  const titleInput = body.querySelector("input[data-field='title']");
+  const subtitleInput = body.querySelector("input[data-field='subtitle']");
+  const sceneHint = body.querySelector(".modal-scene-hint");
+
+  if (sceneField) sceneField.hidden = false;
+  if (sceneInput instanceof HTMLInputElement) {
+    sceneInput.disabled = false;
+    sceneInput.readOnly = false;
+  }
+  if (titleField) titleField.hidden = fromText;
+  if (subtitleField) subtitleField.hidden = fromText;
+  if (titleInput instanceof HTMLInputElement) {
+    titleInput.disabled = false;
+    titleInput.placeholder = "Tytuł na wideo";
+  }
+  if (subtitleInput instanceof HTMLInputElement) {
+    subtitleInput.disabled = false;
+    subtitleInput.placeholder = "Podtytuł";
+  }
+  if (sceneHint) {
+    const slide = slides[editingSlideIndex];
+    sceneHint.hidden = !(fromText && !slide?.sceneLabel?.trim());
+  }
+};
+
+const setSlidesSectionExpanded = (expanded) => {
+  const body = $("slides-section-body");
+  const toggle = $("slides-section-toggle");
+  if (!body || !toggle) return;
+  body.hidden = !expanded;
+  toggle.setAttribute("aria-expanded", String(expanded));
+  toggle.classList.toggle("is-expanded", expanded);
+};
+
+const updateSlidesSectionVisibility = () => {
+  if (slides.length > 0) {
+    setSlidesSectionExpanded(true);
+  }
 };
 
 const setContentMode = (mode) => {
@@ -98,8 +515,16 @@ const setContentMode = (mode) => {
 
 const setStatus = (message, type = "") => {
   const el = $("status");
+  if (!el) return;
   el.textContent = message;
-  el.className = `status ${type}`;
+  el.className = `generate-action-status${type ? ` ${type}` : ""}`;
+};
+
+const setDescriptionsStatus = (message, type = "") => {
+  const el = $("descriptions-status");
+  if (!el) return;
+  el.textContent = message;
+  el.className = `generate-action-status${type ? ` ${type}` : ""}`;
 };
 
 const inferLocationFromPath = (image) => {
@@ -160,7 +585,7 @@ const getSlideCaption = (slide, fromText) => {
   const scene = slide.sceneLabel?.trim();
   const title = slide.title?.trim();
   if (scene) return scene;
-  if (fromText) return title || "Brak opisu kadru";
+  if (fromText) return title || "Brak opisu zdjęcia";
   return title || "Bez tytułu";
 };
 
@@ -242,20 +667,20 @@ const renderSlideModal = () => {
       <span>Typ zdjęcia</span>
       ${renderLocationSelect(slide, "modal-location")}
     </label>
-    <label class="modal-field">
-      <span>Co widać na kadru</span>
+    <label class="modal-field modal-field-scene-label">
+      <span>Co widać na zdjęciu</span>
       <input type="text" data-field="sceneLabel" value="${escapeHtml(slide.sceneLabel ?? "")}" placeholder="np. fotel kierowcy, bagażnik, przód auta" />
     </label>
-    <label class="modal-field">
+    <label class="modal-field modal-field-title"${fromText ? " hidden" : ""}>
       <span>Tytuł na wideo</span>
-      <input type="text" data-field="title" value="${escapeHtml(slide.title)}" placeholder="${fromText ? "AI wybierze tytuł…" : "Tytuł na wideo"}"${fromText ? " disabled" : ""} />
+      <input type="text" data-field="title" value="${escapeHtml(slide.title)}" placeholder="Tytuł na wideo" />
     </label>
-    <label class="modal-field">
+    <label class="modal-field modal-field-subtitle"${fromText ? " hidden" : ""}>
       <span>Podtytuł</span>
-      <input type="text" data-field="subtitle" value="${escapeHtml(slide.subtitle ?? "")}" placeholder="${fromText ? "AI wybierze podtytuł…" : "Podtytuł"}"${fromText ? " disabled" : ""} />
+      <input type="text" data-field="subtitle" value="${escapeHtml(slide.subtitle ?? "")}" placeholder="Podtytuł" />
     </label>
     ${slide.beats ? `<p class="modal-hint">Rytm slajdu: <span class="beats-badge">${slide.beats}♩</span> (ustawione przy generowaniu)</p>` : ""}
-    ${fromText && !slide.sceneLabel?.trim() ? `<p class="modal-hint">Uzupełnij opis kadru — AI dopasuje tekst bez powtórzeń.</p>` : ""}
+    <p class="modal-hint modal-scene-hint"${fromText && !slide.sceneLabel?.trim() ? "" : " hidden"}>Uzupełnij opis zdjęcia — AI dopasuje tekst bez powtórzeń.</p>
     <div class="modal-reorder">
       <button type="button" class="btn btn-ghost" data-move-prev${index === 0 ? " disabled" : ""}>← W lewo</button>
       <span class="modal-reorder-label">Pozycja ${index + 1} / ${slides.length}</span>
@@ -276,21 +701,23 @@ const renderSlideModal = () => {
   body.querySelector("input[data-field='sceneLabel']")?.addEventListener("input", (e) => {
     const target = /** @type {HTMLInputElement} */ (e.target);
     slides[index].sceneLabel = target.value;
+    const sceneHint = body.querySelector(".modal-scene-hint");
+    if (sceneHint) {
+      sceneHint.hidden = !(getContentMode() === "fromText" && !target.value.trim());
+    }
     updateSlideTileInGrid(index);
   });
 
-  if (!fromText) {
-    body.querySelector("input[data-field='title']")?.addEventListener("input", (e) => {
-      const target = /** @type {HTMLInputElement} */ (e.target);
-      slides[index].title = target.value;
-      updateSlideTileInGrid(index);
-    });
-    body.querySelector("input[data-field='subtitle']")?.addEventListener("input", (e) => {
-      const target = /** @type {HTMLInputElement} */ (e.target);
-      slides[index].subtitle = target.value;
-      updateSlideTileInGrid(index);
-    });
-  }
+  body.querySelector("input[data-field='title']")?.addEventListener("input", (e) => {
+    const target = /** @type {HTMLInputElement} */ (e.target);
+    slides[index].title = target.value;
+    updateSlideTileInGrid(index);
+  });
+  body.querySelector("input[data-field='subtitle']")?.addEventListener("input", (e) => {
+    const target = /** @type {HTMLInputElement} */ (e.target);
+    slides[index].subtitle = target.value;
+    updateSlideTileInGrid(index);
+  });
 
   body.querySelector("[data-move-prev]")?.addEventListener("click", () => {
     if (index > 0) moveSlide(index, index - 1);
@@ -380,6 +807,8 @@ const renderSlides = () => {
       closeSlideModal();
     }
   }
+
+  updateSlidesSectionVisibility();
 };
 
 const attachSlideReorder = (list) => {
@@ -548,51 +977,21 @@ const scanPublicAssets = async () => {
 };
 
 const loadProject = async () => {
+  if (!activeProjectId) {
+    $("manifest-preview").textContent = "";
+    return;
+  }
   try {
-    const res = await fetch("/api/project");
+    const res = await fetch(`/api/project?projectId=${encodeURIComponent(activeProjectId)}`);
     if (!res.ok) {
       $("manifest-preview").textContent =
         res.status === 404
-          ? "Brak wygenerowanego projektu — kliknij „Generuj flow animacji”."
+          ? "Nowy projekt — wrzuć zdjęcia i wygeneruj flow."
           : `Nie udało się wczytać manifestu (HTTP ${res.status}).`;
       return;
     }
     const project = await res.json();
-    $("prompt").value = project.prompt ?? "";
-    setContentMode(project.contentMode ?? "manual");
-    $("info-text").value = project.infoText ?? "";
-    slides = project.slides ?? [];
-    if ($("use-all-public").checked) {
-      await syncAllPublicImages();
-    } else {
-      renderSlides();
-      updateSlideCountHint();
-    }
-    audioPath = project.audio ?? null;
-    audioDurationSeconds = project.sync?.audioDurationSeconds ?? null;
-    detectedBpm = project.sync?.bpm ?? null;
-    if (audioPath) {
-      $("audio-name").textContent = `Audio: ${audioPath}`;
-    }
-    if (project.sync?.beatsPerSlide) {
-      $("beats-per-slide").value = String(project.sync.beatsPerSlide);
-    }
-    if (project.sync?.mode) {
-      $("sync-mode").value = project.sync.mode;
-    }
-    if (project.sync?.bpm) {
-      $("bpm").value = String(project.sync.bpm);
-    }
-    if (project.sync?.beatCount && project.sync?.bpm) {
-      beatAnalysis = {
-        bpm: project.sync.bpm,
-        beatCount: project.sync.beatCount,
-        confidence: project.sync.confidence ?? 0.7,
-      };
-    }
-    $("sync-to-music").checked = project.sync?.enabled !== false;
-    updateAudioMeta();
-    $("manifest-preview").textContent = JSON.stringify(project, null, 2);
+    applyManifestToEditor(project);
   } catch (error) {
     $("manifest-preview").textContent =
       error instanceof Error
@@ -613,19 +1012,142 @@ const loadHealth = async () => {
   if (data.photosUrl) {
     $("photos-link")?.setAttribute("href", data.photosUrl);
   }
+
+  if (data.studioUrl) {
+    const studioLink = $("studio-link");
+    if (studioLink) {
+      studioLink.href = data.studioUrl;
+    }
+  }
+
+  const logoutForm = $("logout-form");
+  if (logoutForm && data.signOutUrl) {
+    logoutForm.action = data.signOutUrl;
+  }
+
+  return data;
+};
+
+const loadSessionUser = async () => {
+  const emailEl = $("user-email");
+  const logoutForm = $("logout-form");
+  if (!emailEl || !logoutForm) return;
+
+  try {
+    const res = await fetch("/api/me");
+    if (!res.ok) {
+      emailEl.textContent = "";
+      return;
+    }
+    const data = await res.json();
+    const user = data.user;
+    emailEl.textContent = user?.name?.trim() || user?.email || "";
+    emailEl.title = user?.email ?? "";
+  } catch {
+    emailEl.textContent = "";
+  }
+
+  logoutForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await fetch("/api/logout", { method: "POST" });
+    } catch {
+      // cookie wygasnie po wylogowaniu z NextAuth
+    }
+    logoutForm.submit();
+  });
+};
+
+const generateDescriptions = async () => {
+  if (!activeProjectId) {
+    setDescriptionsStatus("Wybierz projekt wideo z listy.", "err");
+    return;
+  }
+
+  const infoText = $("info-text").value.trim();
+  if (!infoText) {
+    setDescriptionsStatus("Wklej opis auta / parametry techniczne.", "err");
+    return;
+  }
+
+  const btn = $("generate-descriptions-btn");
+  if (btn) btn.disabled = true;
+
+  let addedFromPublic = 0;
+  if (!slides.length) {
+    if ($("use-all-public").checked) {
+      addedFromPublic = await syncAllPublicImages();
+    }
+    if (!slides.length) {
+      setDescriptionsStatus("Brak obrazków w public/. Wrzuć pliki do public/ lub uploads/.", "err");
+      if (btn) btn.disabled = false;
+      return;
+    }
+  } else if ($("use-all-public").checked) {
+    addedFromPublic = await syncAllPublicImages();
+  }
+
+  setDescriptionsStatus(
+    addedFromPublic > 0
+      ? `Dodano ${addedFromPublic} obrazków — generuję opisy slajdów...`
+      : "Generuję opisy slajdów...",
+  );
+
+  try {
+    const res = await fetch("/api/generate-descriptions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: activeProjectId,
+        infoText,
+        slides,
+        useAllPublicImages: $("use-all-public").checked,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Generowanie opisów nieudane");
+
+    slides = data.slides ?? data.project?.slides ?? slides;
+    persistedManifestMeta = data.project ?? persistedManifestMeta;
+    if (data.project) {
+      $("manifest-preview").textContent = JSON.stringify(data.project, null, 2);
+      videoProjects = videoProjects.map((item) =>
+        item.id === activeProjectId
+          ? {
+              ...item,
+              slideCount: slides.length,
+              thumbnailImage: slides[0]?.image ?? item.thumbnailImage,
+              updatedAt: new Date().toISOString(),
+            }
+          : item,
+      );
+      const current = videoProjects.find((item) => item.id === activeProjectId);
+      if (current) {
+        $("editor-project-meta").textContent = `${current.slideCount} slajdów · ostatnia zmiana ${formatPlDateTime(current.updatedAt)}`;
+      }
+    }
+    renderSlides();
+    updateSlideCountHint();
+    setDescriptionsStatus(data.message ?? "Opisy slajdów wygenerowane.", "ok");
+  } catch (error) {
+    setDescriptionsStatus(error instanceof Error ? error.message : "Błąd", "err");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 };
 
 const generate = async () => {
+  if (!activeProjectId) {
+    setStatus("Wybierz projekt wideo z listy.", "err");
+    return;
+  }
+
   const prompt = $("prompt").value.trim();
   const contentMode = getContentMode();
   const infoText = $("info-text").value.trim();
 
   if (!prompt) {
     setStatus("Wpisz prompt opisujący styl wideo.", "err");
-    return;
-  }
-  if (contentMode === "fromText" && !infoText) {
-    setStatus("Wklej opis auta / parametry techniczne.", "err");
     return;
   }
 
@@ -646,13 +1168,9 @@ const generate = async () => {
   }
 
   setStatus(
-    contentMode === "fromText"
-      ? addedFromPublic > 0
-        ? `Dodano ${addedFromPublic} obrazków — AI układa teksty i flow...`
-        : "AI układa teksty i flow animacji..."
-      : addedFromPublic > 0
-        ? `Dodano ${addedFromPublic} obrazków — generuję flow...`
-        : "Generuję flow animacji...",
+    addedFromPublic > 0
+      ? `Dodano ${addedFromPublic} obrazków — generuję flow animacji...`
+      : "Generuję flow animacji...",
   );
 
   try {
@@ -661,6 +1179,7 @@ const generate = async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        projectId: activeProjectId,
         prompt,
         contentMode,
         infoText: contentMode === "fromText" ? infoText : null,
@@ -678,9 +1197,28 @@ const generate = async () => {
     if (!res.ok) throw new Error(data.error ?? "Generowanie nieudane");
 
     $("manifest-preview").textContent = JSON.stringify(data.project, null, 2);
+    persistedManifestMeta = data.project;
     slides = data.project.slides ?? slides;
     renderSlides();
     updateSlideCountHint();
+    if (data.project) {
+      videoProjects = videoProjects.map((item) =>
+        item.id === activeProjectId
+          ? {
+              ...item,
+              slideCount: (data.project.slides ?? []).length,
+              thumbnailImage: data.project.slides?.[0]?.image ?? item.thumbnailImage,
+              prompt: data.project.prompt ?? item.prompt,
+              status: "ready",
+              updatedAt: new Date().toISOString(),
+            }
+          : item,
+      );
+      const current = videoProjects.find((item) => item.id === activeProjectId);
+      if (current) {
+        $("editor-project-meta").textContent = `${current.slideCount} slajdów · ostatnia zmiana ${formatPlDateTime(current.updatedAt)}`;
+      }
+    }
     const sync = data.project.sync;
     const slideInfo =
       data.slideCount != null
@@ -766,11 +1304,19 @@ setupDropzone("audio-drop", "audio-input", (files) => {
 });
 
 $("generate-btn").addEventListener("click", generate);
+$("generate-descriptions-btn")?.addEventListener("click", generateDescriptions);
 $("scan-btn").addEventListener("click", scanPublicAssets);
 $("clear-slides-btn").addEventListener("click", () => {
   slides = [];
   renderSlides();
   updateSlideCountHint();
+  setSlidesSectionExpanded(false);
+});
+
+$("slides-section-toggle")?.addEventListener("click", () => {
+  const toggle = $("slides-section-toggle");
+  const expanded = toggle?.getAttribute("aria-expanded") !== "true";
+  setSlidesSectionExpanded(expanded);
 });
 
 document.querySelectorAll(".chip").forEach((chip) => {
@@ -795,8 +1341,94 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-loadHealth();
-updateSyncPanelVisibility();
-loadProject();
-updateSlideCountHint();
-renderSlides();
+$("save-project-btn")?.addEventListener("click", async () => {
+  const btn = $("save-project-btn");
+  if (!activeProjectId || !btn) return;
+  btn.disabled = true;
+  setSaveProjectStatus("Zapisywanie…");
+  try {
+    await saveCurrentProjectDraft();
+    setSaveProjectStatus("Zapisano.", "ok");
+  } catch (error) {
+    setSaveProjectStatus(
+      error instanceof Error ? error.message : "Nie udało się zapisać projektu.",
+      "err",
+    );
+  } finally {
+    updateSaveProjectButton();
+  }
+});
+
+$("create-project-btn")?.addEventListener("click", async () => {
+  try {
+    await createVideoProject();
+  } catch (error) {
+    const errorEl = $("projects-error");
+    if (errorEl) {
+      errorEl.hidden = false;
+      errorEl.textContent = error instanceof Error ? error.message : "Nie udało się utworzyć projektu.";
+    }
+  }
+});
+
+$("back-to-projects")?.addEventListener("click", async () => {
+  try {
+    if (activeProjectId) {
+      await saveCurrentProjectDraft();
+    }
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Nie udało się zapisać projektu.", "err");
+    return;
+  }
+  showProjectsView();
+  try {
+    await loadVideoProjects();
+  } catch (error) {
+    const errorEl = $("projects-error");
+    if (errorEl) {
+      errorEl.hidden = false;
+      errorEl.textContent = error instanceof Error ? error.message : "Nie udało się odświeżyć listy.";
+    }
+  }
+});
+
+$("project-delete-confirm")?.addEventListener("click", async () => {
+  try {
+    await confirmDeleteProject();
+  } catch (error) {
+    const errorEl = $("projects-error");
+    if (errorEl) {
+      errorEl.hidden = false;
+      errorEl.textContent = error instanceof Error ? error.message : "Nie udało się usunąć projektu.";
+    }
+  }
+});
+
+document.querySelectorAll("[data-project-modal-close]").forEach((el) => {
+  el.addEventListener("click", closeDeleteProjectModal);
+});
+
+const initPanel = async () => {
+  await loadHealth();
+  await loadSessionUser();
+  updateSyncPanelVisibility();
+  try {
+    await loadVideoProjects();
+  } catch (error) {
+    const errorEl = $("projects-error");
+    if (errorEl) {
+      errorEl.hidden = false;
+      errorEl.textContent = error instanceof Error ? error.message : "Nie udało się wczytać projektów.";
+    }
+  }
+
+  const projectId = getProjectIdFromUrl();
+  if (projectId) {
+    await openProject(projectId, { skipUrl: true });
+    return;
+  }
+
+  showProjectsView();
+};
+
+initPanel();

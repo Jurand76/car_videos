@@ -3,8 +3,8 @@ import path from "path";
 import type { ProjectManifest, ProjectSlide } from "../src/projectTypes";
 import { TRANSITION_TYPES, type TransitionType } from "../src/transitions";
 import { getAiStatus, type AiProvider } from "./env";
-import { applyMusicSync, type GenerateInput } from "./syncProject";
-import { assignVariedBeats, guessBeatsPerSlide } from "../src/sync";
+import { applyMusicSync, type GenerateInput, resolveBaseBeats } from "./syncProject";
+import { assignVariedBeats } from "../src/sync";
 import { inferLocationFromPath, assignInfoChunksToSlides } from "./slideMatching";
 import { formatMagazineCopy, MAGAZINE_STYLE_PROMPT } from "./magazineCopy";
 
@@ -160,12 +160,33 @@ const mergeLlmSlides = (
     };
   });
 
+const mergeLlmSlidesForFlow = (
+  inputSlides: ProjectSlide[],
+  llmSlides: ProjectSlide[],
+): ProjectSlide[] =>
+  inputSlides.map((input, index) => {
+    const fromLlm =
+      llmSlides.find((slide) => slide.image === input.image) ??
+      llmSlides[index];
+    return {
+      ...input,
+      location: input.location ?? inferLocationFromPath(input.image),
+      transition: fromLlm?.transition,
+      beats:
+        fromLlm?.beats != null && fromLlm.beats > 0
+          ? clampBeats(fromLlm.beats)
+          : input.beats,
+    };
+  });
+
 export const generateHeuristic = (input: GenerateInput): ProjectManifest => {
   const pool = pickPool(input.prompt);
   const timing = pickTiming(input.prompt);
-  const baseBeats = guessBeatsPerSlide(input.prompt);
+  const baseBeats = resolveBaseBeats(input);
   const beatPattern = assignVariedBeats(input.slides.length, baseBeats);
-  const contentSlides = applyContentFromText(input);
+  const contentSlides = input.preserveSlideCopy
+    ? input.slides
+    : applyContentFromText(input);
 
   const slides = contentSlides.map((slide, index) => {
     const base = {
@@ -174,7 +195,10 @@ export const generateHeuristic = (input: GenerateInput): ProjectManifest => {
         index === 0 ? undefined : pool[(index - 1) % pool.length],
       beats: beatPattern[index],
     };
-    return input.contentMode === "fromText" ? formatMagazineCopy(base) : base;
+    if (input.contentMode === "fromText" && !input.preserveSlideCopy) {
+      return formatMagazineCopy(base);
+    }
+    return base;
   });
 
   return {
@@ -230,6 +254,20 @@ TRYB fromText (payload: infoText + slides[] z polami image, location, sceneLabel
 - Nie wymyślaj parametrów spoza infoText.
 - Przykład: sceneLabel „fotel kierowcy” → title „Komfort na dłuższe dystanse”, subtitle „Skóra Nappa · podgrzewane fotele · masaż”.`;
 
+const FLOW_ONLY_PROMPT = `
+TRYB flow-only (slides[] mają już title/subtitle):
+- NIE zmieniaj title ani subtitle — zwróć je identycznie jak w payloadzie.
+- Ustaw tylko transition, beats oraz pola globalne (slideDuration, transitionDuration, kenBurns, audioVolume).`;
+
+const DESCRIPTIONS_SYSTEM_PROMPT = `Jesteś copywriterem motoryzacyjnym. Zwracasz WYŁĄCZNIE poprawny JSON (bez markdown):
+{
+  "slides": [{ "image": string, "title": string, "subtitle"?: string }]
+}
+Zwróć DOKŁADNIE tyle slajdów, ile obrazków dostałeś — nie pomijaj żadnego.
+
+${MAGAZINE_STYLE_PROMPT}
+${CONTENT_FROM_TEXT_PROMPT}`;
+
 type LlmConfig = {
   provider: Exclude<AiProvider, "heuristic">;
   apiKey: string;
@@ -237,10 +275,21 @@ type LlmConfig = {
   model: string;
 };
 
-const buildSystemPrompt = (input: GenerateInput) =>
-  input.contentMode === "fromText" && input.infoText?.trim()
-    ? `${SYSTEM_PROMPT}\n${CONTENT_FROM_TEXT_PROMPT}`
-    : SYSTEM_PROMPT;
+const buildSystemPrompt = (input: GenerateInput) => {
+  if (input.preserveSlideCopy) {
+    return `${SYSTEM_PROMPT}\n${FLOW_ONLY_PROMPT}`;
+  }
+  if (input.contentMode === "fromText" && input.infoText?.trim()) {
+    return `${SYSTEM_PROMPT}\n${CONTENT_FROM_TEXT_PROMPT}`;
+  }
+  return SYSTEM_PROMPT;
+};
+
+const buildDescriptionsUserPayload = (input: GenerateInput) =>
+  JSON.stringify({
+    infoText: input.infoText?.trim() ?? "",
+    slides: input.slides.map(slideMetaPayload),
+  });
 
 const buildUserPayload = (input: GenerateInput) => {
   const base = {
@@ -276,22 +325,33 @@ const parseLlmResponse = (
     slides: ProjectSlide[];
   };
 
-  const merged = mergeLlmSlides(input.slides, parsed.slides);
+  const merged = input.preserveSlideCopy
+    ? mergeLlmSlidesForFlow(input.slides, parsed.slides)
+    : mergeLlmSlides(input.slides, parsed.slides);
   const slides = merged.map((slide, index) => ({
     ...slide,
     transition: index === 0 ? undefined : slide.transition,
     beats:
       slide.beats != null && slide.beats > 0
         ? clampBeats(slide.beats)
-        : undefined,
+        : slide.beats,
   }));
 
-  const baseBeats = guessBeatsPerSlide(input.prompt);
+  const baseBeats = resolveBaseBeats(input);
   const beatPattern = assignVariedBeats(input.slides.length, baseBeats);
-  const slidesWithBeats = slides.map((slide, index) => ({
-    ...formatMagazineCopy(slide),
-    beats: slide.beats ?? beatPattern[index],
-  }));
+  const slidesWithBeats = slides.map((slide, index) => {
+    const withBeats = {
+      ...slide,
+      beats: slide.beats ?? beatPattern[index],
+    };
+    if (input.preserveSlideCopy) {
+      return withBeats;
+    }
+    return {
+      ...formatMagazineCopy(withBeats),
+      beats: withBeats.beats,
+    };
+  });
 
   return {
     version: 1,
@@ -313,10 +373,19 @@ const parseLlmResponse = (
   };
 };
 
-export const generateWithLlm = async (
+const parseDescriptionsResponse = (
   input: GenerateInput,
+  content: string,
+): ProjectSlide[] => {
+  const parsed = JSON.parse(content) as { slides: ProjectSlide[] };
+  return mergeLlmSlides(input.slides, parsed.slides ?? []).map(formatMagazineCopy);
+};
+
+const callLlmJson = async (
   config: LlmConfig,
-): Promise<ProjectManifest> => {
+  system: string,
+  user: string,
+): Promise<string> => {
   const response = await fetch(`${config.baseUrl}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -328,63 +397,106 @@ export const generateWithLlm = async (
       temperature: 0.7,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: buildSystemPrompt(input) },
-        { role: "user", content: buildUserPayload(input) },
+        { role: "system", content: system },
+        { role: "user", content: user },
       ],
     }),
   });
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(
-      `${config.provider} API error: ${response.status} ${text}`,
-    );
+    throw new Error(`${config.provider} API error: ${response.status} ${text}`);
   }
 
   const data = (await response.json()) as {
     choices: { message: { content: string } }[];
   };
+  return data.choices[0].message.content;
+};
 
-  return parseLlmResponse(
-    input,
-    config.provider,
-    data.choices[0].message.content,
+const getLlmConfig = (): LlmConfig | null => {
+  const ai = getAiStatus();
+  if (!ai.enabled || ai.provider === "heuristic" || !ai.model) {
+    return null;
+  }
+  return ai.provider === "deepseek"
+    ? {
+        provider: "deepseek",
+        apiKey: process.env.DEEPSEEK_API_KEY!,
+        baseUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com",
+        model: ai.model,
+      }
+    : {
+        provider: "openai",
+        apiKey: process.env.OPENAI_API_KEY!,
+        baseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com",
+        model: ai.model,
+      };
+};
+
+export const generateSlideDescriptions = async (
+  input: GenerateInput,
+): Promise<ProjectSlide[]> => {
+  if (input.contentMode !== "fromText" || !input.infoText?.trim()) {
+    throw new Error("Tryb „AI z opisu auta” wymaga opisu auta.");
+  }
+  if (!input.slides.length) {
+    throw new Error("Brak slajdów do opisania.");
+  }
+
+  const config = getLlmConfig();
+  if (!config) {
+    return applyContentFromText(input).map(formatMagazineCopy);
+  }
+
+  try {
+    const content = await callLlmJson(
+      config,
+      DESCRIPTIONS_SYSTEM_PROMPT,
+      buildDescriptionsUserPayload(input),
+    );
+    return parseDescriptionsResponse(input, content);
+  } catch {
+    return applyContentFromText(input).map(formatMagazineCopy);
+  }
+};
+
+export const generateWithLlm = async (
+  input: GenerateInput,
+  config: LlmConfig,
+): Promise<ProjectManifest> => {
+  const content = await callLlmJson(
+    config,
+    buildSystemPrompt(input),
+    buildUserPayload(input),
   );
+
+  return parseLlmResponse(input, config.provider, content);
 };
 
 export const generateProject = async (
   input: GenerateInput,
 ): Promise<ProjectManifest> => {
+  const flowInput: GenerateInput = { ...input, preserveSlideCopy: true };
   const ai = getAiStatus();
   let manifest: ProjectManifest;
 
   if (!ai.enabled || ai.provider === "heuristic" || !ai.model) {
-    manifest = generateHeuristic(input);
+    manifest = generateHeuristic(flowInput);
   } else {
-    const config: LlmConfig =
-      ai.provider === "deepseek"
-        ? {
-            provider: "deepseek",
-            apiKey: process.env.DEEPSEEK_API_KEY!,
-            baseUrl:
-              process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com",
-            model: ai.model,
-          }
-        : {
-            provider: "openai",
-            apiKey: process.env.OPENAI_API_KEY!,
-            baseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com",
-            model: ai.model,
-          };
-
-    try {
-      manifest = await generateWithLlm(input, config);
-    } catch {
-      manifest = generateHeuristic(input);
+    const config = getLlmConfig();
+    if (!config) {
+      manifest = generateHeuristic(flowInput);
+    } else {
+      try {
+        manifest = await generateWithLlm(flowInput, config);
+      } catch {
+        manifest = generateHeuristic(flowInput);
+      }
     }
   }
 
-  return applyMusicSync(manifest, input, ROOT);
+  return applyMusicSync(manifest, flowInput, ROOT);
 };
 
 export const writeProject = (

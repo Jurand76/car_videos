@@ -59,12 +59,16 @@ export default async function DashboardPage() {
       </div>
 
       <section className="mt-10">
-        <h2 className="text-lg font-semibold">Stwórz nowy projekt</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Wybierz typ projektu — pojedyncze zdjęcie lub całą serię ujęć.
-        </p>
-        <Card className="mt-4">
-          <CreateProjectButtons token={session.accessToken} />
+        <Card>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold">Stwórz nowy projekt</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Wybierz typ projektu — pojedyncze zdjęcie lub całą serię ujęć.
+              </p>
+            </div>
+            <CreateProjectButtons token={session.accessToken} />
+          </div>
         </Card>
       </section>
 

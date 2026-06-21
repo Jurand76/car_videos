@@ -30,7 +30,7 @@ export function CreateProjectButtons({ token }: CreateProjectButtonsProps) {
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap justify-end gap-2">
       <Button onClick={() => handleCreate("advanced")} loading={loading === "advanced"}>
         Zdjęcia pojedyncze
       </Button>

@@ -9,12 +9,21 @@ import { analyzeAudioFile } from "./analyzeAudio";
 import { getAudioMeta } from "./audio";
 import {
   generateProject,
+  generateSlideDescriptions,
   readProject,
   writeProject,
   type GenerateInput,
 } from "./generate";
 import { mergeSlidesWithPublicImages } from "./publicImages";
-import { requireVideoAuth } from "./videoAuth";
+import { requireVideoAuth, requireVideoAuthApi } from "./videoAuth";
+import {
+  createVideoProject,
+  deleteVideoProject,
+  getVideoProjectManifest,
+  listVideoProjects,
+  renameVideoProject,
+  saveVideoProjectManifest,
+} from "./videoProjects";
 
 loadProjectEnv();
 
@@ -155,16 +164,96 @@ app.get("/api/health", (_req, res) => {
     hubUrl: `${PHOTOS_WEB_URL}/hub`,
     photosUrl: `${PHOTOS_WEB_URL}/dashboard`,
     photosWebUrl: PHOTOS_WEB_URL,
+    loginUrl: `${PHOTOS_WEB_URL}/login`,
+    signOutUrl: `${PHOTOS_WEB_URL}/api/auth/signout`,
   });
 });
 
-app.get("/api/project", (_req, res) => {
+app.get("/api/me", requireVideoAuthApi, (req, res) => {
+  res.json({ user: req.videoUser });
+});
+
+app.post("/api/logout", (_req, res) => {
+  res.clearCookie("videoAccess", { sameSite: "lax" });
+  res.json({
+    ok: true,
+    loginUrl: `${PHOTOS_WEB_URL}/login`,
+    signOutUrl: `${PHOTOS_WEB_URL}/api/auth/signout`,
+  });
+});
+
+app.get("/api/project", requireVideoAuthApi, (req, res) => {
+  const projectId =
+    typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+  const userId = req.videoUser!.id;
+
+  if (projectId) {
+    const manifest = getVideoProjectManifest(userId, projectId);
+    if (!manifest) {
+      res.status(404).json({ error: "Nie znaleziono projektu wideo." });
+      return;
+    }
+    writeProject(manifest, PROJECT_PATH);
+    res.json({ ...manifest, id: projectId });
+    return;
+  }
+
   try {
     const project = readProject(PROJECT_PATH);
     res.json(project);
   } catch {
-    res.status(404).json({ error: "Brak project.json — wygeneruj projekt w panelu." });
+    res.status(404).json({ error: "Wybierz projekt wideo z listy." });
   }
+});
+
+app.get("/api/video-projects", requireVideoAuthApi, (req, res) => {
+  res.json({ projects: listVideoProjects(req.videoUser!.id) });
+});
+
+app.post("/api/video-projects", requireVideoAuthApi, (req, res) => {
+  const name = typeof req.body?.name === "string" ? req.body.name : undefined;
+  const project = createVideoProject(req.videoUser!.id, name);
+  res.status(201).json({ project });
+});
+
+app.patch("/api/video-projects/:id", requireVideoAuthApi, (req, res) => {
+  const name = typeof req.body?.name === "string" ? req.body.name : undefined;
+  if (!name?.trim()) {
+    res.status(400).json({ error: "Podaj nazwę projektu." });
+    return;
+  }
+  const project = renameVideoProject(req.videoUser!.id, req.params.id, name);
+  if (!project) {
+    res.status(404).json({ error: "Nie znaleziono projektu." });
+    return;
+  }
+  res.json({ project });
+});
+
+app.put("/api/video-projects/:id/manifest", requireVideoAuthApi, (req, res) => {
+  const userId = req.videoUser!.id;
+  const projectId = req.params.id;
+  if (!getVideoProjectManifest(userId, projectId)) {
+    res.status(404).json({ error: "Nie znaleziono projektu." });
+    return;
+  }
+  const manifest = req.body as import("../src/projectTypes").ProjectManifest;
+  if (!manifest || !Array.isArray(manifest.slides)) {
+    res.status(400).json({ error: "Nieprawidłowy manifest." });
+    return;
+  }
+  writeProject(manifest, PROJECT_PATH);
+  const project = saveVideoProjectManifest(userId, projectId, manifest);
+  res.json({ ok: true, project, projectId });
+});
+
+app.delete("/api/video-projects/:id", requireVideoAuthApi, (req, res) => {
+  const ok = deleteVideoProject(req.videoUser!.id, req.params.id);
+  if (!ok) {
+    res.status(404).json({ error: "Nie znaleziono projektu." });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 app.get("/api/assets", (_req, res) => {
@@ -273,9 +362,88 @@ app.post("/api/analyze-audio", async (req, res) => {
   }
 });
 
-app.post("/api/generate", async (req, res) => {
+app.post("/api/generate-descriptions", requireVideoAuthApi, async (req, res) => {
   try {
     const {
+      projectId,
+      infoText,
+      slides,
+      useAllPublicImages,
+    } = req.body as GenerateInput & { projectId?: string };
+
+    if (!projectId) {
+      res.status(400).json({ error: "Brak identyfikatora projektu wideo." });
+      return;
+    }
+
+    const userId = req.videoUser!.id;
+    const existingManifest = getVideoProjectManifest(userId, projectId);
+    if (!existingManifest) {
+      res.status(404).json({ error: "Nie znaleziono projektu wideo." });
+      return;
+    }
+
+    if (!infoText?.trim()) {
+      res.status(400).json({
+        error: "W trybie „AI z opisu” wklej opis auta / parametry techniczne.",
+      });
+      return;
+    }
+
+    const useAllPublic = useAllPublicImages !== false;
+    const incomingSlides = slides ?? [];
+    const { slides: mergedSlides, added, removed } = mergeSlidesWithPublicImages(
+      incomingSlides,
+      PUBLIC_DIR,
+      useAllPublic,
+    );
+
+    if (!mergedSlides.length) {
+      res.status(400).json({
+        error: "Brak obrazków w public/. Wrzuć pliki JPG/PNG do public/ lub uploads/.",
+      });
+      return;
+    }
+
+    const updatedSlides = await generateSlideDescriptions({
+      prompt: existingManifest.prompt ?? "",
+      contentMode: "fromText",
+      infoText: infoText.trim(),
+      slides: mergedSlides,
+      audio: existingManifest.audio ?? null,
+    });
+
+    const manifest = {
+      ...existingManifest,
+      contentMode: "fromText" as const,
+      infoText: infoText.trim(),
+      slides: updatedSlides,
+      generatedAt: new Date().toISOString(),
+    };
+
+    writeProject(manifest, PROJECT_PATH);
+    saveVideoProjectManifest(userId, projectId, manifest);
+
+    res.json({
+      ok: true,
+      projectId,
+      project: manifest,
+      slides: updatedSlides,
+      slidesAdded: added,
+      slidesRemoved: removed,
+      message: `Opisy slajdów wygenerowane (${updatedSlides.length} slajdów).`,
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Błąd generowania opisów",
+    });
+  }
+});
+
+app.post("/api/generate", requireVideoAuthApi, async (req, res) => {
+  try {
+    const {
+      projectId,
       prompt,
       contentMode,
       infoText,
@@ -287,7 +455,18 @@ app.post("/api/generate", async (req, res) => {
       syncToMusic,
       syncMode,
       useAllPublicImages,
-    } = req.body as GenerateInput;
+    } = req.body as GenerateInput & { projectId?: string };
+
+    if (!projectId) {
+      res.status(400).json({ error: "Brak identyfikatora projektu wideo." });
+      return;
+    }
+
+    const userId = req.videoUser!.id;
+    if (!getVideoProjectManifest(userId, projectId)) {
+      res.status(404).json({ error: "Nie znaleziono projektu wideo." });
+      return;
+    }
 
     if (!prompt?.trim()) {
       res.status(400).json({ error: "Prompt jest wymagany." });
@@ -311,12 +490,6 @@ app.post("/api/generate", async (req, res) => {
     }
 
     const mode = contentMode ?? "manual";
-    if (mode === "fromText" && !infoText?.trim()) {
-      res.status(400).json({
-        error: "W trybie „AI z opisu” wklej opis auta / parametry techniczne.",
-      });
-      return;
-    }
 
     const manifest = await generateProject({
       prompt: prompt.trim(),
@@ -333,9 +506,11 @@ app.post("/api/generate", async (req, res) => {
     });
 
     writeProject(manifest, PROJECT_PATH);
+    saveVideoProjectManifest(userId, projectId, manifest);
 
     res.json({
       ok: true,
+      projectId,
       project: manifest,
       slideCount: manifest.slides.length,
       slidesAdded: added,

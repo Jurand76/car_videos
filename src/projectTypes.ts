@@ -37,6 +37,8 @@ export type ProjectManifest = {
   audio: string | null;
   audioVolume: number;
   slides: ProjectSlide[];
+  /** Czy przy generowaniu brać wszystkie obrazki z public/. */
+  useAllPublicImages?: boolean;
   sync: MusicSyncInfo;
   slideTimings?: SlideTiming[];
   totalDurationFrames?: number;

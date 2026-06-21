@@ -297,7 +297,7 @@ export const computeBeatSync = (params: {
   const targetBeats = Math.floor(beats.length * 0.92);
   const rawTotal = slideBeats.reduce((sum, b) => sum + b, 0);
 
-  if (targetBeats > slideCount * 4 && rawTotal > 0) {
+  if (targetBeats > slideCount * 4 && rawTotal > targetBeats) {
     const maxBeatsPerSlide = Math.max(
       48,
       Math.ceil(targetBeats / slideCount) + 4,
@@ -306,17 +306,6 @@ export const computeBeatSync = (params: {
     slideBeats = slideBeats.map((b) =>
       Math.max(4, Math.min(maxBeatsPerSlide, Math.round(b * scale))),
     );
-
-    let adjustedTotal = slideBeats.reduce((sum, b) => sum + b, 0);
-    let guard = 0;
-    while (adjustedTotal < targetBeats && guard < targetBeats * 2) {
-      const idx = guard % slideCount;
-      if (slideBeats[idx] < maxBeatsPerSlide) {
-        slideBeats[idx]++;
-        adjustedTotal++;
-      }
-      guard++;
-    }
   } else {
     slideBeats = slideBeats.map((b) => Math.max(4, Math.min(48, b)));
   }
@@ -469,7 +458,7 @@ export const computeAccentSync = (params: {
 
   const targetBeats = Math.floor(beats.length * 0.92);
   const rawTotal = slideBeats.reduce((sum, b) => sum + b, 0);
-  if (targetBeats > slideCount * 4 && rawTotal > 0) {
+  if (targetBeats > slideCount * 4 && rawTotal > targetBeats) {
     const scale = targetBeats / rawTotal;
     slideBeats = slideBeats.map((b) =>
       Math.max(4, Math.min(48, Math.round(b * scale))),
