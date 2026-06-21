@@ -10,7 +10,7 @@ export type User = {
   created_at: string;
 };
 
-export type ProjectType = "advanced" | "photo_series";
+export type ProjectType = "advanced" | "photo_series" | "simple";
 
 export type SeriesCategory = string;
 
