@@ -1,10 +1,12 @@
-import { AbsoluteFill, Audio, Sequence, staticFile } from "remotion";
+import { AbsoluteFill, Audio, Sequence, interpolate, staticFile, useCurrentFrame } from "remotion";
 import { Slide } from "./Slide";
 import {
   FPS,
+  getOutroFrames,
   getSlideSequenceDuration,
   getSlideStart,
   getSlideTransitionDuration,
+  getSlidesContentEndFrame,
   getTotalDuration,
   PROJECT,
   SLIDES,
@@ -13,25 +15,47 @@ import { getLocalBeatFrames } from "./slideAnimation";
 import { getTransitionBetween } from "./transitions";
 
 export const MyComposition = () => {
+  const frame = useCurrentFrame();
   const beatTimes = PROJECT.sync.beatTimesSeconds ?? [];
+  const outroFrames = getOutroFrames();
+  const outroStart = getSlidesContentEndFrame();
+  const totalFrames = getTotalDuration(SLIDES.length);
+
+  const fadeOut = interpolate(frame, [outroStart, totalFrames], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  const audioVolume = (f: number) => {
+    const base = PROJECT.audioVolume;
+    if (f < outroStart) return base;
+    return interpolate(f, [outroStart, totalFrames], [base, 0], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+  };
 
   return (
     <AbsoluteFill className="bg-black">
       {PROJECT.audio ? (
         <Audio
           src={staticFile(PROJECT.audio)}
-          volume={() => PROJECT.audioVolume}
+          volume={audioVolume}
         />
       ) : null}
 
       {SLIDES.map((slide, index) => {
         const slideStart = getSlideStart(index);
-        const slideDuration = getSlideSequenceDuration(index);
+        const contentDuration = getSlideSequenceDuration(index);
+        const isLast = index === SLIDES.length - 1;
+        const slideDuration = isLast
+          ? contentDuration + outroFrames
+          : contentDuration;
         const localBeatFrames = getLocalBeatFrames(
           beatTimes,
           FPS,
           slideStart,
-          slideDuration,
+          contentDuration,
         );
 
         const enterTransition =
@@ -61,10 +85,20 @@ export const MyComposition = () => {
               kenBurns={PROJECT.kenBurns}
               enterTransition={enterTransition}
               exitTransition={exitTransition}
+              holdFrames={isLast ? outroFrames : 0}
             />
           </Sequence>
         );
       })}
+
+      <AbsoluteFill
+        style={{
+          backgroundColor: "#000",
+          opacity: fadeOut,
+          zIndex: 9999,
+          pointerEvents: "none",
+        }}
+      />
     </AbsoluteFill>
   );
 };

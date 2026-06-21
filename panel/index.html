@@ -65,9 +65,15 @@
       </div>
 
       <div id="view-editor" class="view-editor" hidden>
-        <div class="editor-topbar">
-          <button class="btn btn-ghost editor-back-btn" id="back-to-projects" type="button">← Projekty</button>
-        </div>
+        <header class="editor-page-header">
+          <div class="editor-page-header-main">
+            <h1 id="editor-project-title" class="editor-page-title">Projekt wideo</h1>
+            <p id="editor-project-meta" class="muted editor-project-meta"></p>
+          </div>
+          <button class="btn btn-secondary editor-back-btn" id="back-to-projects" type="button">
+            Wróć do projektów
+          </button>
+        </header>
 
         <section class="card editor-project-bar">
           <div class="editor-project-save-row">
@@ -82,7 +88,6 @@
               </button>
             </div>
           </div>
-          <p id="editor-project-meta" class="muted editor-project-meta"></p>
         </section>
 
       <main class="grid">
@@ -97,7 +102,7 @@
                 <label class="dropzone dropzone-exterior" id="image-drop-exterior">
                   <input type="file" id="image-input-exterior" accept="image/*" multiple hidden />
                   <strong>Auto z zewnątrz</strong>
-                  <span>Przód, profil, felgi, lampy…</span>
+                  <span>Zdjęcia karoserii</span>
                 </label>
 
                 <label class="dropzone dropzone-interior" id="image-drop-interior">
@@ -111,7 +116,7 @@
                 <label class="dropzone dropzone-other" id="image-drop">
                   <input type="file" id="image-input" accept="image/*" multiple hidden />
                   <strong>Inne zdjęcia</strong>
-                  <span>Silnik, inne detale</span>
+                  <span>Silnik, lampy, inne detale</span>
                 </label>
 
                 <label class="dropzone dropzone-audio" id="audio-drop">
@@ -212,9 +217,6 @@
                 placeholder="Np.&#10;BMW M3 Competition&#10;Silnik: 3,0 l R6 twin-turbo · 510 KM · 650 Nm&#10;0–100 km/h: 3,9 s&#10;Skrzynia: 8-biegowa automatyczna&#10;Napęd: xDrive&#10;Bagażnik: 480 l&#10;..."
               ></textarea>
             </label>
-            <p class="muted sync-hint">
-              Wklej opis auta i przy każdym zdjęciu wpisz <strong>co widać na zdjęciu</strong>, potem kliknij <strong>Generuj opisy</strong>. Flow animacji (krok 3) nie zmienia już tych tekstów.
-            </p>
           </div>
 
           <p class="muted sync-hint slide-label-hint">

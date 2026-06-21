@@ -3,7 +3,7 @@
   "prompt": "MASakra efektowa, flash, glitch, kafle, shockwave",
   "contentMode": "fromText",
   "infoText": "rok produkcji 2019, Przebieg 47 835 km, Moc 241 KM - 177 kW, Rodzaj paliwa Benzyna, Pojemność silnika 1999 cm³, Skrzynia biegów Automatyczna, Liczba drzwi 4, Liczba miejsc 5, Kolor: niebieski, napęd 4x4.\n\nZaprojektowany z myślą o komforcie i bezpieczeństwie, Ford Fusion wyposażony jest w niezawodny silnik benzynowy o pojemności 1999 cm³, generujący imponującą moc 241 KM. Skrzynia biegów automatyczna zapewnia płynną i dynamiczną jazdę, czyniąc każdą podróż prawdziwą przyjemnością.\n\nTen wyjątkowy egzemplarz cee się przebiegiem zaledwie 47835 km, co świadczy o jego doskonałym stanie technicznym i niewielkim zużyciu. Pojazd jest cału w oruginalnej powłoce lakierniczej, co potwierdza jego nienaganną historię i dbałość poprzedniego właściciela.\n\nFord Fusion z 2019 roku to wszechstronny samochód osobowy typu sedan, oferujący 5 wygodnych miejsc i 4 drzwi. Jego przestronne wnętrze oraz bagażnik pomieszczą wszystko, czego potrzebujesz – idealny wybór dla rodzin, osób ceniących aktywny tryb życia oraz wszystkich, którzy szukają niezawodnego i stylowego pojazdu na co dzień.\n\nAUTKA.PL zaprasza do zapoznania się z tą atrakcyjną ofertą. To doskonała okazja, aby stać się właścicielem Forda Fusion, który z pewnością spełni Państwa oczekiwania pod względem jakości, komfortu i wrażeń z jazdy.",
-  "generatedAt": "2026-06-21T13:38:42.808Z",
+  "generatedAt": "2026-06-21T14:01:58.227Z",
   "generatedBy": "deepseek",
   "fps": 30,
   "width": 1280,
@@ -12,208 +12,261 @@
   "transitionDuration": 8,
   "kenBurns": true,
   "audio": "uploads/1782031107152-suno-sax-instrumental.mp3",
-  "audioVolume": 0.7,
+  "audioVolume": 0.8,
   "slides": [
     {
       "image": "2.jpg",
       "location": "exterior",
       "sceneLabel": "",
       "title": "Ford Fusion 2019",
-      "subtitle": "241 KM · 4x4 · Automat"
+      "subtitle": "241 KM · 4x4 · Automat",
+      "beats": 8,
+      "accentStrength": 0.7777752586243056
     },
     {
       "image": "3.jpg",
       "location": "exterior",
       "sceneLabel": "",
       "title": "2.0 EcoBoost",
-      "subtitle": "1999 cm³ · benzynowy"
+      "subtitle": "1999 cm³ · benzynowy",
+      "transition": "flash",
+      "beats": 4,
+      "accentStrength": 0.7751271747517702
     },
     {
       "image": "4.jpg",
       "location": "exterior",
       "sceneLabel": "",
       "title": "241 koni mechanicznych",
-      "subtitle": "177 kW · dynamiczna jazda"
+      "subtitle": "177 kW · dynamiczna jazda",
+      "transition": "shockwave",
+      "beats": 16,
+      "accentStrength": 0.7664029030836563
     },
     {
       "image": "5.jpg",
       "location": "exterior",
       "sceneLabel": "",
       "title": "Skrzynia dopasowana do charakteru",
-      "subtitle": "Płynne zmiany przełożeń"
+      "subtitle": "Płynne zmiany przełożeń",
+      "transition": "strobeCut",
+      "beats": 6,
+      "accentStrength": 0.7378479690398962
     },
     {
       "image": "6.jpg",
       "location": "exterior",
       "sceneLabel": "",
       "title": "Napęd z pewnością siebie",
-      "subtitle": "Przyczepność na każdej nawierzchni"
+      "subtitle": "Przyczepność na każdej nawierzchni",
+      "transition": "glitch",
+      "beats": 12,
+      "accentStrength": 0.8312520131830067
     },
     {
       "image": "8.jpg",
       "location": "interior",
       "sceneLabel": "Fotel kierowcy",
       "title": "Komfort na dłuższe dystanse",
-      "subtitle": "Nowoczesny design"
+      "subtitle": "Nowoczesny design",
+      "transition": "shatter",
+      "beats": 4,
+      "accentStrength": 0.7760249360054009
     },
     {
       "image": "9.jpg",
       "location": "interior",
       "sceneLabel": "",
       "title": "Nadwozie sedan",
-      "subtitle": "4 drzwi · 5 miejsc"
+      "subtitle": "4 drzwi · 5 miejsc",
+      "transition": "zoomSpin",
+      "beats": 10,
+      "accentStrength": 0.8316763666366954
     },
     {
       "image": "10.jpg",
       "location": "interior",
       "sceneLabel": "",
       "title": "Kolor niebieski",
-      "subtitle": "Elegancka prezencja"
+      "subtitle": "Elegancka prezencja",
+      "transition": "mosaic",
+      "beats": 8,
+      "accentStrength": 0.8223083645261205
     },
     {
       "image": "11.jpg",
       "location": "interior",
       "sceneLabel": "Deska rozdzielcza",
       "title": "Kokpit skoncentrowany na kierowcy",
-      "subtitle": "Funkcjonalna i czytelna"
+      "subtitle": "Funkcjonalna i czytelna",
+      "transition": "tilesRadial",
+      "beats": 8,
+      "accentStrength": 0.809021581262043
     },
     {
       "image": "12.jpg",
       "location": "interior",
       "sceneLabel": "",
       "title": "Oryginalna powłoka",
-      "subtitle": "Bez wypadków · lakier bez zarzutu"
+      "subtitle": "Bez wypadków · lakier bez zarzutu",
+      "transition": "flash",
+      "beats": 4,
+      "accentStrength": 0.7167698920147046
     },
     {
       "image": "13.jpg",
       "location": "interior",
       "sceneLabel": "",
       "title": "Przestronne wnętrze",
-      "subtitle": "Komfort dla całej rodziny"
+      "subtitle": "Komfort dla całej rodziny",
+      "transition": "pushLeft",
+      "beats": 16,
+      "accentStrength": 0.7605808297495632
     },
     {
       "image": "14.jpg",
       "location": "interior",
       "sceneLabel": "",
       "title": "Pojemny bagażnik",
-      "subtitle": "Funkcjonalność na co dzień"
+      "subtitle": "Funkcjonalność na co dzień",
+      "transition": "strobeCut",
+      "beats": 6,
+      "accentStrength": 0.8470791794878045
     },
     {
       "image": "17.jpg",
       "location": "interior",
       "sceneLabel": "",
       "title": "Ford Fusion",
-      "subtitle": "Gotowy do jazdy"
+      "subtitle": "Gotowy do jazdy",
+      "transition": "glitch",
+      "beats": 12,
+      "accentStrength": 0.78148308624024
     },
     {
       "image": "18.jpg",
       "location": "interior",
       "sceneLabel": "Tylna kanapa",
       "title": "Tapicerka bez kompromisów",
-      "subtitle": "Przestrzeń dla pasażerów"
+      "subtitle": "Przestrzeń dla pasażerów",
+      "transition": "shatter",
+      "beats": 4,
+      "accentStrength": 0.7748169235459665
     },
     {
       "image": "15.jpg",
       "location": "other",
       "sceneLabel": "Drzwi pasażera od wewnątrz",
       "title": "Drzwi pasażera",
-      "subtitle": "Wykończenie premium"
+      "subtitle": "Wykończenie premium",
+      "transition": "zoomSpin",
+      "beats": 10,
+      "accentStrength": 0.9265283273156368
     },
     {
       "image": "7.jpg",
       "location": "other",
       "sceneLabel": "boczek drzwi przednich",
       "title": "Boczek drzwi przednich",
-      "subtitle": "47 835 KM · stan idealny"
+      "subtitle": "47 835 KM · stan idealny",
+      "transition": "mosaic",
+      "beats": 8,
+      "accentStrength": 0.7942335374523823
     },
     {
       "image": "16.jpg",
       "location": "other",
       "sceneLabel": "",
       "title": "AUTKA.PL",
-      "subtitle": "Sprawdź ofertę"
+      "subtitle": "Sprawdź ofertę",
+      "transition": "tilesRadial",
+      "beats": 8,
+      "accentStrength": 0.870788140430066
     },
     {
       "image": "19.jpg",
       "location": "other",
       "sceneLabel": "",
       "title": "Jazda próbna",
-      "subtitle": "Poczuj dynamikę 4x4"
+      "subtitle": "Poczuj dynamikę 4x4",
+      "transition": "flash",
+      "beats": 4,
+      "accentStrength": 0.870788140430066
     }
   ],
   "useAllPublicImages": false,
   "slideTimings": [
     {
       "from": 0,
-      "duration": 430
-    },
-    {
-      "from": 422,
-      "duration": 322
-    },
-    {
-      "from": 736,
-      "duration": 294
-    },
-    {
-      "from": 1022,
-      "duration": 247
-    },
-    {
-      "from": 1261,
-      "duration": 263
-    },
-    {
-      "from": 1516,
-      "duration": 368
-    },
-    {
-      "from": 1876,
-      "duration": 293
-    },
-    {
-      "from": 2161,
       "duration": 189
     },
     {
-      "from": 2342,
+      "from": 181,
+      "duration": 128
+    },
+    {
+      "from": 301,
+      "duration": 249
+    },
+    {
+      "from": 542,
+      "duration": 127
+    },
+    {
+      "from": 661,
+      "duration": 248
+    },
+    {
+      "from": 901,
+      "duration": 129
+    },
+    {
+      "from": 1022,
+      "duration": 127
+    },
+    {
+      "from": 1141,
+      "duration": 128
+    },
+    {
+      "from": 1261,
+      "duration": 128
+    },
+    {
+      "from": 1381,
+      "duration": 128
+    },
+    {
+      "from": 1501,
       "duration": 247
     },
     {
+      "from": 1740,
+      "duration": 144
+    },
+    {
+      "from": 1876,
+      "duration": 248
+    },
+    {
+      "from": 2116,
+      "duration": 128
+    },
+    {
+      "from": 2236,
+      "duration": 114
+    },
+    {
+      "from": 2342,
+      "duration": 172
+    },
+    {
+      "from": 2506,
+      "duration": 83
+    },
+    {
       "from": 2581,
-      "duration": 353
-    },
-    {
-      "from": 2926,
-      "duration": 263
-    },
-    {
-      "from": 3181,
-      "duration": 368
-    },
-    {
-      "from": 3541,
-      "duration": 323
-    },
-    {
-      "from": 3856,
-      "duration": 294
-    },
-    {
-      "from": 4142,
-      "duration": 248
-    },
-    {
-      "from": 4382,
-      "duration": 248
-    },
-    {
-      "from": 4622,
-      "duration": 323
-    },
-    {
-      "from": 4937,
-      "duration": 428
+      "duration": 2784
     }
   ],
   "totalDurationFrames": 5365,
@@ -222,7 +275,7 @@
     "mode": "beats",
     "audioDurationSeconds": 178.824,
     "bpm": 162,
-    "beatsPerSlide": 16,
+    "beatsPerSlide": 8,
     "framesPerBeat": 14,
     "beatCount": 360,
     "beatTimesSeconds": [
@@ -592,26 +645,26 @@
     "confidence": 0.425,
     "cutTimesSeconds": [
       0,
-      14.326711654663086,
-      24.81052017211914,
+      6.304217338562012,
+      10.309659957885742,
+      18.32054328918457,
+      22.314376831054688,
+      30.313650131225586,
       34.319091796875,
+      38.312923431396484,
       42.30675506591797,
-      50.805259704589844,
+      46.312198638916016,
+      50.3060302734375,
+      58.28208541870117,
       62.79836654663086,
-      72.30693817138672,
+      70.80924987792969,
+      74.79147338867188,
       78.32090759277344,
-      86.3085708618164,
-      97.81405639648438,
-      106.31256103515625,
-      118.3056640625,
-      128.8126983642578,
-      138.32127380371094,
-      146.3321533203125,
-      154.34303283691406,
-      164.8384552001953
+      83.81242370605469,
+      86.3085708618164
     ],
     "animationPhases": {
-      "introBeats": 6,
+      "introBeats": 2,
       "exitBang": true,
       "bangStrength": 0.2631015152825965
     },

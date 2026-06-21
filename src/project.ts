@@ -1,6 +1,7 @@
 import projectJson from "../generated/project.json";
 import type { ProjectManifest, ProjectSlide } from "./projectTypes";
 import { DEFAULT_ANIMATION_PHASES, type AnimationPhases } from "./slideAnimation";
+import { getOutroDurationFrames } from "./sync";
 
 const defaultSync: ProjectManifest["sync"] = {
   enabled: false,
@@ -62,11 +63,23 @@ export const getSlideSequenceDuration = (index: number) => {
 export const getSlideTransitionDuration = (index: number) =>
   PROJECT.sync.slideTransitionDurations?.[index] ?? TRANSITION_DURATION;
 
+export const getOutroFrames = () => getOutroDurationFrames(FPS);
+
+export const getSlidesContentEndFrame = (): number => {
+  if (PROJECT.slideTimings?.length) {
+    const last = PROJECT.slideTimings[PROJECT.slideTimings.length - 1];
+    return last.from + last.duration;
+  }
+  if (SLIDES.length <= 0) return 0;
+  return (
+    (SLIDES.length - 1) * (SLIDE_DURATION - TRANSITION_DURATION) + SLIDE_DURATION
+  );
+};
+
 export const getTotalDuration = (slideCount: number) => {
   if (PROJECT.totalDurationFrames) {
     return PROJECT.totalDurationFrames;
   }
-  return slideCount > 0
-    ? (slideCount - 1) * (SLIDE_DURATION - TRANSITION_DURATION) + SLIDE_DURATION
-    : 0;
+  if (slideCount <= 0) return 0;
+  return getSlidesContentEndFrame() + getOutroFrames();
 };

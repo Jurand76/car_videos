@@ -3,6 +3,21 @@ export type SlideTiming = {
   duration: number;
 };
 
+/** Czas fade-outu (czarny ekran + wyciszenie) po ostatnim slajdzie. */
+export const OUTRO_DURATION_SECONDS = 2;
+
+export const getOutroDurationFrames = (fps: number): number =>
+  Math.round(OUTRO_DURATION_SECONDS * fps);
+
+const slidesEndFrame = (slideTimings: SlideTiming[]): number => {
+  if (!slideTimings.length) return 0;
+  const last = slideTimings[slideTimings.length - 1];
+  return last.from + last.duration;
+};
+
+const totalWithOutro = (slideTimings: SlideTiming[], fps: number): number =>
+  slidesEndFrame(slideTimings) + getOutroDurationFrames(fps);
+
 export type MusicSyncInfo = {
   enabled: boolean;
   mode: "beats" | "bpm" | "duration";
@@ -95,20 +110,24 @@ export const computeMusicSync = (params: {
   }
 
   if (slideCount === 1) {
+    const framesPerBeat =
+      params.bpm && params.bpm > 0
+        ? Math.round((60 / params.bpm) * params.fps)
+        : Math.round((60 / 120) * params.fps);
+    const segment = Math.max(1, params.beatsPerSlide) * framesPerBeat;
+    const slideTimings = [{ from: 0, duration: segment }];
     return {
-      slideTimings: [{ from: 0, duration: totalFrames }],
+      slideTimings,
       transitionDuration: 0,
-      slideDuration: totalFrames,
-      totalDurationFrames: totalFrames,
+      slideDuration: segment,
+      totalDurationFrames: totalWithOutro(slideTimings, params.fps),
       sync: {
         enabled: true,
         mode: params.bpm ? "bpm" : "duration",
         audioDurationSeconds: params.audioDurationSeconds,
         bpm: params.bpm,
         beatsPerSlide: params.beatsPerSlide,
-        framesPerBeat: params.bpm
-          ? Math.round((60 / params.bpm) * params.fps)
-          : null,
+        framesPerBeat: params.bpm ? framesPerBeat : null,
       },
     };
   }
@@ -129,12 +148,6 @@ export const computeMusicSync = (params: {
     while (beatsPerSlide > 1 && totalForBeats(beatsPerSlide) > totalFrames) {
       beatsPerSlide--;
     }
-    while (
-      beatsPerSlide < 32 &&
-      totalForBeats(beatsPerSlide + 1) <= totalFrames
-    ) {
-      beatsPerSlide++;
-    }
 
     const segment = beatsPerSlide * framesPerBeat;
     const slideTimings: SlideTiming[] = [];
@@ -146,15 +159,14 @@ export const computeMusicSync = (params: {
           : slideTimings[i - 1].from +
             slideTimings[i - 1].duration -
             transitionDuration;
-      const duration = i === slideCount - 1 ? totalFrames - from : segment;
-      slideTimings.push({ from, duration });
+      slideTimings.push({ from, duration: segment });
     }
 
     return {
       slideTimings,
       transitionDuration,
       slideDuration: segment,
-      totalDurationFrames: totalFrames,
+      totalDurationFrames: totalWithOutro(slideTimings, params.fps),
       sync: {
         enabled: true,
         mode: "bpm",
@@ -170,9 +182,8 @@ export const computeMusicSync = (params: {
     8,
     Math.min(Math.round(totalFrames / slideCount / 7), 28),
   );
-  const slideDuration = Math.round(
-    (totalFrames + (slideCount - 1) * transitionDuration) / slideCount,
-  );
+  const framesPerBeat = Math.round((60 / 120) * params.fps);
+  const slideDuration = Math.max(72, params.beatsPerSlide * framesPerBeat);
 
   const slideTimings: SlideTiming[] = [];
   for (let i = 0; i < slideCount; i++) {
@@ -182,15 +193,14 @@ export const computeMusicSync = (params: {
         : slideTimings[i - 1].from +
           slideTimings[i - 1].duration -
           transitionDuration;
-    const duration = i === slideCount - 1 ? totalFrames - from : slideDuration;
-    slideTimings.push({ from, duration });
+    slideTimings.push({ from, duration: slideDuration });
   }
 
   return {
     slideTimings,
     transitionDuration,
     slideDuration,
-    totalDurationFrames: totalFrames,
+    totalDurationFrames: totalWithOutro(slideTimings, params.fps),
     sync: {
       enabled: true,
       mode: "duration",
@@ -222,7 +232,6 @@ export const computeBeatSync = (params: {
   totalDurationFrames: number;
   sync: MusicSyncInfo;
 } => {
-  const totalFrames = Math.round(params.audioDurationSeconds * params.fps);
   const slideCount = params.slideCount;
   const beats = params.beatTimesSeconds.filter(
     (t) => t <= params.audioDurationSeconds + 0.001,
@@ -247,21 +256,31 @@ export const computeBeatSync = (params: {
   }
 
   if (slideCount === 1) {
+    const beatIntervalSeconds =
+      beats.length > 1 ? beats[1] - beats[0] : 60 / params.bpm;
+    const getBeatTime = (beatIndex: number) => {
+      if (beatIndex < beats.length) return beats[beatIndex];
+      const lastBeat = beats[beats.length - 1] ?? 0;
+      return lastBeat + (beatIndex - beats.length + 1) * beatIntervalSeconds;
+    };
+    const slideBeats = Math.max(4, Math.round(params.slideBeats[0] ?? 16));
+    const duration = Math.max(
+      1,
+      Math.round(getBeatTime(slideBeats) * params.fps),
+    );
+    const slideTimings = [{ from: 0, duration }];
     return {
-      slideTimings: [{ from: 0, duration: totalFrames }],
+      slideTimings,
       transitionDuration: 0,
-      slideDuration: totalFrames,
-      totalDurationFrames: totalFrames,
+      slideDuration: duration,
+      totalDurationFrames: totalWithOutro(slideTimings, params.fps),
       sync: {
         enabled: true,
         mode: "beats",
         audioDurationSeconds: params.audioDurationSeconds,
         bpm: params.bpm,
-        beatsPerSlide: params.slideBeats[0] ?? 16,
-        framesPerBeat:
-          beats.length > 1
-            ? Math.round((beats[1] - beats[0]) * params.fps)
-            : Math.round((60 / params.bpm) * params.fps),
+        beatsPerSlide: slideBeats,
+        framesPerBeat: Math.round(beatIntervalSeconds * params.fps),
         beatCount: beats.length,
       },
     };
@@ -332,7 +351,7 @@ export const computeBeatSync = (params: {
           );
     const endFrame =
       i === slideCount - 1
-        ? totalFrames
+        ? Math.round(getBeatTime(beatCursor + slideBeats[slideCount - 1]) * params.fps)
         : Math.round(cutTimes[i + 1] * params.fps);
     slideTimings.push({
       from,
@@ -348,7 +367,7 @@ export const computeBeatSync = (params: {
     slideTimings,
     transitionDuration,
     slideDuration: avgDuration,
-    totalDurationFrames: totalFrames,
+    totalDurationFrames: totalWithOutro(slideTimings, params.fps),
       sync: {
         enabled: true,
         mode: "beats",
@@ -383,7 +402,6 @@ export const computeAccentSync = (params: {
   slideTransitionDurations: number[];
   sync: MusicSyncInfo;
 } => {
-  const totalFrames = Math.round(params.audioDurationSeconds * params.fps);
   const slideCount = params.slideCount;
   const beats = params.beatTimesSeconds.filter(
     (t) => t >= 0 && t <= params.audioDurationSeconds + 0.05,
@@ -416,11 +434,24 @@ export const computeAccentSync = (params: {
   }
 
   if (slideCount === 1) {
+    const beatIntervalSeconds =
+      beats.length > 1 ? beats[1] - beats[0] : 60 / params.bpm;
+    const getBeatTimeAtIndex = (beatIndex: number) => {
+      if (beatIndex < beats.length) return beats[beatIndex];
+      const lastBeat = beats[beats.length - 1] ?? 0;
+      return lastBeat + (beatIndex - beats.length + 1) * beatIntervalSeconds;
+    };
+    const slideBeats = Math.max(4, Math.round(params.slideBeats[0] ?? 16));
+    const duration = Math.max(
+      1,
+      Math.round(getBeatTimeAtIndex(slideBeats) * params.fps),
+    );
+    const slideTimings = [{ from: 0, duration }];
     return {
-      slideTimings: [{ from: 0, duration: totalFrames }],
+      slideTimings,
       transitionDuration: 0,
-      slideDuration: totalFrames,
-      totalDurationFrames: totalFrames,
+      slideDuration: duration,
+      totalDurationFrames: totalWithOutro(slideTimings, params.fps),
       slideAccentStrengths: [strengths[0] ?? 0.4],
       slideTransitions: [undefined],
       slideTransitionDurations: [0],
@@ -429,11 +460,8 @@ export const computeAccentSync = (params: {
         mode: "beats",
         audioDurationSeconds: params.audioDurationSeconds,
         bpm: params.bpm,
-        beatsPerSlide: params.slideBeats[0] ?? 16,
-        framesPerBeat:
-          beats.length > 1
-            ? Math.round((beats[1] - beats[0]) * params.fps)
-            : Math.round((60 / params.bpm) * params.fps),
+        beatsPerSlide: slideBeats,
+        framesPerBeat: Math.round(beatIntervalSeconds * params.fps),
         beatCount: beats.length,
         beatTimesSeconds: beats,
         accentCount: strengths.filter((s) => s >= 0.55).length,
@@ -492,6 +520,12 @@ export const computeAccentSync = (params: {
     cutBeatIndices.push(bestBeat);
   }
 
+  const getBeatTimeAtIndex = (beatIndex: number) => {
+    if (beatIndex < beats.length) return beats[beatIndex];
+    const lastBeat = beats[beats.length - 1] ?? 0;
+    return lastBeat + (beatIndex - beats.length + 1) * beatIntervalSeconds;
+  };
+
   const slideAccentStrengths: number[] = [];
   const slideTransitions: (TransitionType | undefined)[] = [];
   const slideTransitionDurations: number[] = [];
@@ -525,7 +559,11 @@ export const computeAccentSync = (params: {
         : Math.max(0, Math.round(cutTimes[i] * params.fps) - enterOverlap);
     const endFrame =
       i === slideCount - 1
-        ? totalFrames
+        ? Math.round(
+            getBeatTimeAtIndex(
+              (cutBeatIndices[slideCount - 1] ?? 0) + slideBeats[slideCount - 1],
+            ) * params.fps,
+          )
         : Math.round(cutTimes[i + 1] * params.fps);
     slideTimings.push({
       from,
@@ -548,7 +586,7 @@ export const computeAccentSync = (params: {
     slideTimings,
     transitionDuration: avgTransition,
     slideDuration: avgDuration,
-    totalDurationFrames: totalFrames,
+    totalDurationFrames: totalWithOutro(slideTimings, params.fps),
     slideAccentStrengths,
     slideTransitions,
     slideTransitionDurations,

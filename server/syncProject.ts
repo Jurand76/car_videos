@@ -3,6 +3,7 @@ import {
   assignVariedBeats,
   computeAccentSync,
   computeMusicSync,
+  getOutroDurationFrames,
   guessBeatsPerSlide,
 } from "../src/sync";
 import { analyzeAudioFromPublic } from "./analyzeAudio";
@@ -54,11 +55,11 @@ export const applyMusicSync = async (
       },
       totalDurationFrames:
         manifest.totalDurationFrames ??
-        (manifest.slides.length > 0
+        ((manifest.slides.length > 0
           ? (manifest.slides.length - 1) *
               (manifest.slideDuration - manifest.transitionDuration) +
             manifest.slideDuration
-          : 0),
+          : 0) + getOutroDurationFrames(manifest.fps)),
     };
   }
 

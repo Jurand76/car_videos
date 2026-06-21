@@ -31,6 +31,8 @@ type SlideProps = ProjectSlide & {
   kenBurns?: boolean;
   enterTransition?: TransitionType;
   exitTransition?: TransitionType;
+  /** Ostatnie klatki — zamrożenie obrazu podczas outro. */
+  holdFrames?: number;
 };
 
 export const Slide: React.FC<SlideProps> = ({
@@ -44,9 +46,13 @@ export const Slide: React.FC<SlideProps> = ({
   kenBurns = true,
   enterTransition,
   exitTransition,
+  holdFrames = 0,
 }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames, width, height } = useVideoConfig();
+  const contentFrames = Math.max(1, durationInFrames - holdFrames);
+  const activeFrame =
+    holdFrames > 0 ? Math.min(frame, contentFrames - 1) : frame;
   const enterTransitionDuration =
     slideIndex > 0 ? getSlideTransitionDuration(slideIndex - 1) : 0;
   const exitTransitionDuration = getSlideTransitionDuration(slideIndex);
@@ -62,16 +68,16 @@ export const Slide: React.FC<SlideProps> = ({
 
   const enterProgress =
     enterTransition !== undefined && enterTransitionDuration > 0
-      ? interpolate(frame, [0, enterTransitionDuration], [0, 1], {
+      ? interpolate(activeFrame, [0, enterTransitionDuration], [0, 1], {
           extrapolateLeft: "clamp",
           extrapolateRight: "clamp",
         })
       : 1;
 
-  const exitStart = Math.max(0, durationInFrames - exitTransitionDuration);
+  const exitStart = Math.max(0, contentFrames - exitTransitionDuration);
   const exitProgress =
-    exitTransition !== undefined && durationInFrames > 1
-      ? interpolate(frame, [exitStart, durationInFrames], [0, 1], {
+    exitTransition !== undefined && contentFrames > 1
+      ? interpolate(activeFrame, [exitStart, contentFrames], [0, 1], {
           extrapolateLeft: "clamp",
           extrapolateRight: "clamp",
         })
@@ -111,18 +117,18 @@ export const Slide: React.FC<SlideProps> = ({
 
   const textHideStart = Math.max(
     textEnterFrame + 8,
-    exitTransition ? exitStart - 6 : durationInFrames,
+    exitTransition ? exitStart - 6 : contentFrames,
   );
 
   const textOpacity = (() => {
-    if (frame < textEnterFrame) return 0;
-    if (!exitTransition || textHideStart >= durationInFrames - 1) return 1;
-    if (frame < textHideStart) return 1;
+    if (activeFrame < textEnterFrame) return 0;
+    if (!exitTransition || textHideStart >= contentFrames - 1) return 1;
+    if (activeFrame < textHideStart) return 1;
 
-    const hideEnd = Math.min(textHideStart + 10, durationInFrames);
+    const hideEnd = Math.min(textHideStart + 10, contentFrames);
     if (hideEnd <= textHideStart) return 1;
 
-    return interpolate(frame, [textHideStart, hideEnd], [1, 0], {
+    return interpolate(activeFrame, [textHideStart, hideEnd], [1, 0], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
@@ -136,8 +142,8 @@ export const Slide: React.FC<SlideProps> = ({
         ? pickBangStrengthForAccent(accentStrength, phases.bangStrength ?? 0.14)
         : phases.bangStrength ?? 0.14;
     imageScale = getExitBangScale(
-      frame,
-      durationInFrames,
+      activeFrame,
+      contentFrames,
       exitTransitionDuration,
       bangStrength,
     );
@@ -182,8 +188,8 @@ export const Slide: React.FC<SlideProps> = ({
 
   const drift = usePan
     ? getSubtleDriftTransform(
-        frame,
-        durationInFrames,
+        activeFrame,
+        contentFrames,
         exitTransitionDuration,
         slideIndex,
       )
@@ -284,7 +290,7 @@ export const Slide: React.FC<SlideProps> = ({
           title={title}
           subtitle={subtitle}
           slideIndex={slideIndex}
-          localFrame={frame - textEnterFrame}
+          localFrame={activeFrame - textEnterFrame}
           hideStartFrame={textHideStart - textEnterFrame}
           baseOpacity={textOpacity}
         />

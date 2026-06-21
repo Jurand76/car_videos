@@ -125,6 +125,7 @@ const showProjectsView = () => {
 const showEditorView = (project) => {
   $("view-projects").hidden = true;
   $("view-editor").hidden = false;
+  $("editor-project-title").textContent = project.name;
   $("editor-project-name-input").value = project.name;
   $("editor-project-meta").textContent = `${project.slideCount} slajdów · ostatnia zmiana ${formatPlDateTime(project.updatedAt)}`;
   document.title = `${project.name} — AUTKA.PL Wideo`;
@@ -294,6 +295,7 @@ const saveCurrentProjectDraft = async () => {
       videoProjects = videoProjects.map((item) =>
         item.id === renameData.project.id ? renameData.project : item,
       );
+      $("editor-project-title").textContent = renameData.project.name;
       document.title = `${renameData.project.name} — AUTKA.PL Wideo`;
     }
   }
@@ -590,9 +592,8 @@ const getSlideCaption = (slide, fromText) => {
 };
 
 const getSlideMetaLine = (slide) => {
-  const location = slide.location ?? inferLocationFromPath(slide.image);
-  const parts = [getLocationLabel(location)];
-  if (slide.subtitle?.trim() && getContentMode() !== "fromText") {
+  const parts = [];
+  if (slide.subtitle?.trim()) {
     parts.push(slide.subtitle.trim());
   }
   if (slide.beats) {
