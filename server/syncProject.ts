@@ -34,6 +34,11 @@ export type GenerateInput = {
   syncMode?: SyncMode;
   /** Flow animacji — nie nadpisuj title/subtitle/sceneLabel. */
   preserveSlideCopy?: boolean;
+  /** Opcjonalna analiza beatów z panelu — omija ponowne liczenie Essentia przy generate. */
+  beatTimesSeconds?: number[];
+  beatStrengths?: number[];
+  analyzer?: "essentia" | "legacy";
+  confidence?: number;
   allowedTransitions?: TransitionType[];
   allowedTextEffects?: TextEffect[];
 };
@@ -106,7 +111,18 @@ export const applyMusicSync = async (
 
   if (syncMode === "beats") {
     try {
-      const analysis = await analyzeAudioFromPublic(root, input.audio);
+      const analysis = input.beatTimesSeconds?.length
+        ? {
+            bpm: Math.round(input.bpm ?? tagBpm ?? 120),
+            beatTimesSeconds: input.beatTimesSeconds,
+            beatStrengths:
+              input.beatStrengths?.length === input.beatTimesSeconds.length
+                ? input.beatStrengths
+                : input.beatTimesSeconds.map(() => 0.5),
+            analyzer: input.analyzer ?? "legacy",
+            confidence: input.confidence ?? 0.5,
+          }
+        : await analyzeAudioFromPublic(root, input.audio);
       const syncResult = computeAccentSync({
         slideCount: manifest.slides.length,
         fps: manifest.fps,

@@ -368,6 +368,8 @@ const applyAudioTrack = async (path, { analyze = true, silent = false } = {}) =>
       accentCount: data.accentCount,
       confidence: data.confidence,
       analyzer: data.analyzer,
+      beatTimesSeconds: data.beatTimesSeconds ?? null,
+      beatStrengths: data.beatStrengths ?? null,
     };
     if (!$("bpm").value) {
       $("bpm").placeholder = `wykryto ${data.bpm} BPM`;
@@ -896,6 +898,20 @@ const setStatus = (message, type = "") => {
   if (!el) return;
   el.textContent = message;
   el.className = `generate-action-status${type ? ` ${type}` : ""}`;
+};
+
+const readApiJson = async (res, fallbackMessage = "Błąd serwera.") => {
+  const raw = await res.text();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const snippet = raw.trim().slice(0, 180);
+    throw new Error(
+      snippet.startsWith("<")
+        ? `${fallbackMessage} (HTTP ${res.status})`
+        : snippet || `${fallbackMessage} (HTTP ${res.status})`,
+    );
+  }
 };
 
 const setDescriptionsStatus = (message, type = "") => {
@@ -1671,9 +1687,13 @@ const generate = async () => {
         useAllPublicImages: false,
         allowedTransitions: getSelectedGraphicEffects(),
         allowedTextEffects: getSelectedTextEffects(),
+        beatTimesSeconds: beatAnalysis?.beatTimesSeconds ?? undefined,
+        beatStrengths: beatAnalysis?.beatStrengths ?? undefined,
+        analyzer: beatAnalysis?.analyzer ?? undefined,
+        confidence: beatAnalysis?.confidence ?? undefined,
       }),
     });
-    const data = await res.json();
+    const data = await readApiJson(res, "Generowanie nieudane.");
     if (!res.ok) throw new Error(data.error ?? "Generowanie nieudane");
 
     $("manifest-preview").textContent = JSON.stringify(data.project, null, 2);

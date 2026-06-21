@@ -415,6 +415,8 @@ app.post("/api/analyze-audio", async (req, res) => {
       confidence: analysis.confidence,
       analyzer: analysis.analyzer,
       durationSeconds: analysis.durationSeconds,
+      beatTimesSeconds: analysis.beatTimesSeconds,
+      beatStrengths: analysis.beatStrengths,
     });
   } catch (error) {
     res.status(500).json({
@@ -519,6 +521,10 @@ app.post("/api/generate", requireVideoAuthApi, async (req, res) => {
       useAllPublicImages,
       allowedTransitions,
       allowedTextEffects,
+      beatTimesSeconds,
+      beatStrengths,
+      analyzer,
+      confidence,
     } = req.body as GenerateInput & { projectId?: string };
 
     if (!projectId) {
@@ -570,6 +576,10 @@ app.post("/api/generate", requireVideoAuthApi, async (req, res) => {
       syncMode: syncMode ?? "beats",
       allowedTransitions: allowedTransitions ?? undefined,
       allowedTextEffects: allowedTextEffects ?? undefined,
+      beatTimesSeconds: beatTimesSeconds ?? undefined,
+      beatStrengths: beatStrengths ?? undefined,
+      analyzer: analyzer ?? undefined,
+      confidence: confidence ?? undefined,
     });
 
     writeProject(manifest, PROJECT_PATH);

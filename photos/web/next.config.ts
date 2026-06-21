@@ -7,6 +7,10 @@ const gatewayUrl = (process.env.NEXT_PUBLIC_GATEWAY_URL ?? "http://localhost:400
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  experimental: {
+    // /api/generate i analyze-audio potrafią trwać kilka minut (Essentia + LLM).
+    proxyTimeout: 600_000,
+  },
   async rewrites() {
     return [
       { source: "/video", destination: `${gatewayUrl}/video` },
