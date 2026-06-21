@@ -945,6 +945,19 @@ a.btn-primary:hover {
   padding-bottom: 14px;
 }
 
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.export-hint {
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .mode-option {
   display: flex;
   gap: 10px;

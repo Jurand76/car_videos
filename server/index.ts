@@ -4,6 +4,7 @@ import express from "express";
 import fs from "fs";
 import multer from "multer";
 import path from "path";
+import { pipeline } from "node:stream/promises";
 import { getAiStatus, loadProjectEnv } from "./env";
 import { analyzeAudioFile } from "./analyzeAudio";
 import { getAudioMeta, listAudioTracks } from "./audio";
@@ -24,6 +25,12 @@ import {
   renameVideoProject,
   saveVideoProjectManifest,
 } from "./videoProjects";
+import {
+  cleanupExportFile,
+  createExportOutputPath,
+  renderProjectVideo,
+  sanitizeExportFilename,
+} from "./renderExport";
 
 loadProjectEnv();
 
@@ -254,6 +261,49 @@ app.delete("/api/video-projects/:id", requireVideoAuthApi, (req, res) => {
     return;
   }
   res.json({ ok: true });
+});
+
+app.post("/api/video-projects/:id/export", requireVideoAuthApi, async (req, res) => {
+  const userId = req.videoUser!.id;
+  const projectId = req.params.id;
+  const manifest = getVideoProjectManifest(userId, projectId);
+
+  if (!manifest) {
+    res.status(404).json({ error: "Nie znaleziono projektu wideo." });
+    return;
+  }
+
+  if (!manifest.slides?.length) {
+    res.status(400).json({ error: "Dodaj slajdy przed eksportem wideo." });
+    return;
+  }
+
+  const summary = listVideoProjects(userId).find((item) => item.id === projectId);
+  const downloadName = `${sanitizeExportFilename(summary?.name ?? "wideo-autka")}.mp4`;
+  const outputPath = createExportOutputPath(projectId);
+
+  try {
+    await renderProjectVideo(manifest, outputPath);
+
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`,
+    );
+
+    await pipeline(fs.createReadStream(outputPath), res);
+  } catch (error) {
+    if (!res.headersSent) {
+      res.status(500).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Nie udało się wyrenderować wideo.",
+      });
+    }
+  } finally {
+    cleanupExportFile(outputPath);
+  }
 });
 
 app.get("/api/assets", (_req, res) => {

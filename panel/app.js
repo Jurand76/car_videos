@@ -1502,6 +1502,129 @@ const generateDescriptions = async () => {
   }
 };
 
+const setExportStatus = (message, type = "") => {
+  const el = $("export-status");
+  if (!el) return;
+  el.textContent = message;
+  el.className = `generate-action-status${type ? ` ${type}` : ""}`;
+};
+
+const sanitizeExportFilename = (name) => {
+  const cleaned = String(name ?? "wideo-autka")
+    .normalize("NFKD")
+    .replace(/[^\w\sąćęłńóśźżĄĆĘŁŃÓŚŹŻ.-]+/gi, " ")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return (cleaned || "wideo-autka").slice(0, 80);
+};
+
+const pickLocalVideoSaveTarget = async (suggestedName) => {
+  if (typeof window.showSaveFilePicker !== "function") {
+    return { mode: "download", suggestedName };
+  }
+
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName,
+      types: [
+        {
+          description: "Wideo MP4",
+          accept: { "video/mp4": [".mp4"] },
+        },
+      ],
+    });
+    return { mode: "handle", handle, suggestedName };
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      return { mode: "cancelled" };
+    }
+    throw error;
+  }
+};
+
+const saveVideoBlobLocally = async (blob, target) => {
+  if (target.mode === "handle") {
+    const writable = await target.handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = target.suggestedName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+const exportVideoToDisk = async () => {
+  if (!activeProjectId) {
+    setExportStatus("Wybierz projekt wideo z listy.", "err");
+    return;
+  }
+
+  if (!slides.length) {
+    setExportStatus("Dodaj slajdy przed eksportem wideo.", "err");
+    return;
+  }
+
+  const project = videoProjects.find((item) => item.id === activeProjectId);
+  const suggestedName = `${sanitizeExportFilename(project?.name ?? "wideo-autka")}.mp4`;
+  const saveTarget = await pickLocalVideoSaveTarget(suggestedName);
+  if (saveTarget.mode === "cancelled") {
+    setExportStatus("");
+    return;
+  }
+
+  const btn = $("export-video-btn");
+  if (btn) btn.disabled = true;
+
+  try {
+    setExportStatus("Zapisuję projekt przed renderem…");
+    await saveCurrentProjectDraft();
+
+    setExportStatus(
+      "Renderuję wideo na serwerze — to może potrwać kilka minut. Nie zamykaj karty.",
+    );
+
+    const res = await fetch(
+      `/api/video-projects/${encodeURIComponent(activeProjectId)}/export`,
+      { method: "POST" },
+    );
+
+    if (!res.ok) {
+      let message = "Eksport wideo nieudany.";
+      try {
+        const data = await res.json();
+        message = data.error ?? message;
+      } catch {
+        message = (await res.text()) || message;
+      }
+      throw new Error(message);
+    }
+
+    setExportStatus("Zapisuję plik na dysku…");
+    const blob = await res.blob();
+    await saveVideoBlobLocally(blob, saveTarget);
+
+    setExportStatus(
+      saveTarget.mode === "handle"
+        ? `Zapisano: ${suggestedName}`
+        : `Pobrano ${suggestedName} (zwykle folder Pobrane).`,
+      "ok",
+    );
+  } catch (error) {
+    setExportStatus(error instanceof Error ? error.message : "Eksport nieudany.", "err");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
 const generate = async () => {
   if (!activeProjectId) {
     setStatus("Wybierz projekt wideo z listy.", "err");
@@ -1666,6 +1789,7 @@ $("audio-select")?.addEventListener("change", async (event) => {
 });
 
 $("generate-btn").addEventListener("click", generate);
+$("export-video-btn")?.addEventListener("click", exportVideoToDisk);
 $("generate-descriptions-btn")?.addEventListener("click", generateDescriptions);
 
 $("slides-section-toggle")?.addEventListener("click", () => {

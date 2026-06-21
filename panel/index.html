@@ -304,9 +304,19 @@
         <section class="card card-wide">
           <h2>4. Ostatni manifest</h2>
           <pre id="manifest-preview" class="manifest">Ładowanie...</pre>
-          <a class="btn btn-primary" id="studio-link" href="#" target="_blank" rel="noopener noreferrer">
-            Otwórz Remotion Studio
-          </a>
+          <div class="export-actions">
+            <button class="btn btn-primary" id="export-video-btn" type="button">
+              Zapisz wideo na dysku…
+            </button>
+            <a class="btn btn-secondary" id="studio-link" href="#" target="_blank" rel="noopener noreferrer">
+              Otwórz Remotion Studio
+            </a>
+          </div>
+          <p id="export-status" class="generate-action-status" aria-live="polite"></p>
+          <p class="muted export-hint">
+            Najpierw wybierzesz folder i nazwę pliku, potem aplikacja wyrenderuje MP4 i zapisze go lokalnie.
+            Render może potrwać kilka minut.
+          </p>
         </section>
       </main>
       </div>

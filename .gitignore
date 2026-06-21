@@ -16,3 +16,4 @@ out
 probe-err*.txt
 nul
 generated/video-users/
+generated/exports/
