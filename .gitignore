@@ -2,6 +2,14 @@ node_modules
 dist
 .DS_Store
 .env
+project.env
+photos/web/node_modules
+photos/web/.next
+photos/web/.env.local
+photos/api/storage
+photos/api/**/__pycache__
+**/*.pyc
+public/uploads
 
 # Ignore the output video from Git but not videos you import into src/.
 out

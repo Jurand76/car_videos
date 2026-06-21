@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AUTKA.PL — zdjęcia i videoprezentacje</title>
+    <link rel="stylesheet" href="/hub/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="/">AUTKA.PL</a>
+        <nav class="topnav">
+          <span class="topnav-active">Start</span>
+          <a id="photos-nav" href="http://localhost:3010/dashboard">Zdjęcia</a>
+          <a id="video-nav" href="/video">Wideo</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="hero">
+        <p class="eyebrow">Platforma motoryzacyjna</p>
+        <h1>Treści motoryzacyjne w jednym miejscu</h1>
+        <p class="lead">
+          Wybierz moduł: profesjonalne zdjęcia produktowe na tle albo dynamiczną
+          videoprezentację zsynchronizowaną z muzyką.
+        </p>
+      </div>
+
+      <div class="cards">
+        <a id="photos-card" class="card card-photos" href="http://localhost:3010/login">
+          <span class="badge badge-violet">Zdjęcia</span>
+          <h2>Generator zdjęć produktowych</h2>
+          <p>
+            Wgraj ujęcia auta, wybierz tło i wygeneruj realistyczne kompozycje — pojedynczo
+            albo w serii (zewnątrz, wnętrze, detale).
+          </p>
+          <span class="card-cta">Otwórz projekt zdjęć →</span>
+        </a>
+
+        <a class="card card-video" href="/video">
+          <span class="badge badge-teal">Wideo</span>
+          <h2>Videoprezentacja</h2>
+          <p>
+            Złóż reel z muzyką i beatami: slajdy, przejścia, teksty AI i podgląd w Remotion
+            Studio.
+          </p>
+          <span class="card-cta">Otwórz panel wideo →</span>
+        </a>
+      </div>
+
+      <p class="hint">
+        Uruchomienie: <code>npm run dev:all</code> — jeden terminal, wszystkie usługi.
+      </p>
+    </main>
+
+    <script src="/hub/config.js"></script>
+    <script src="/hub/hub.js"></script>
+  </body>
+</html>

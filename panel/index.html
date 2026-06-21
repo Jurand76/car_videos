@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AUTKA.PL — Videoprezentacja</title>
+    <link rel="stylesheet" href="/video/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a id="hub-link" class="site-brand" href="/hub">AUTKA.PL</a>
+        <nav class="site-nav">
+          <a id="hub-home-link" href="/hub">Start</a>
+          <a id="photos-link" href="/dashboard">Zdjęcia</a>
+          <span class="site-nav-active">Wideo</span>
+        </nav>
+      </div>
+    </header>
+
+    <div class="app">
+      <main class="grid">
+        <section class="card card-wide assets-card">
+          <h2>1. Assety</h2>
+
+          <div class="assets-layout assets-layout--single">
+            <div class="assets-uploads">
+              <h3 class="assets-col-title">Ładowanie plików</h3>
+
+              <div class="upload-grid">
+                <label class="dropzone dropzone-exterior" id="image-drop-exterior">
+                  <input type="file" id="image-input-exterior" accept="image/*" multiple hidden />
+                  <strong>Zewnątrz auta</strong>
+                  <span>Przód, profil, felgi, lampy…</span>
+                </label>
+
+                <label class="dropzone dropzone-interior" id="image-drop-interior">
+                  <input type="file" id="image-input-interior" accept="image/*" multiple hidden />
+                  <strong>Wnętrze auta</strong>
+                  <span>Fotele, kokpit, bagażnik, ekran…</span>
+                </label>
+              </div>
+
+              <label class="dropzone" id="image-drop">
+                <input type="file" id="image-input" accept="image/*" multiple hidden />
+                <strong>Inne zdjęcia</strong>
+                <span>Detale, silnik, cokolwiek — typ ustawisz na kafelku slajdu</span>
+              </label>
+
+              <label class="dropzone dropzone-audio" id="audio-drop">
+                <input type="file" id="audio-input" accept="audio/*" hidden />
+                <strong>Muzyka (opcjonalnie)</strong>
+                <span>MP3, WAV, M4A → zapis w public/uploads/audio/</span>
+              </label>
+              <p id="audio-name" class="muted"></p>
+              <p id="audio-meta" class="muted sync-meta"></p>
+              <p id="beat-meta" class="muted beat-meta"></p>
+
+              <div class="toolbar">
+                <button class="btn btn-ghost" id="scan-btn" type="button">
+                  Skanuj public/
+                </button>
+                <button class="btn btn-ghost" id="clear-slides-btn" type="button">
+                  Wyczyść slajdy
+                </button>
+              </div>
+              <label class="checkbox-field assets-checkbox">
+                <input type="checkbox" id="use-all-public" />
+                <span>Przy generowaniu dodaj wszystkie obrazki z public/</span>
+              </label>
+              <p id="slide-count-hint" class="muted sync-hint"></p>
+            </div>
+
+            <div class="assets-sync" id="assets-sync" hidden>
+              <h3 class="assets-col-title">Synchronizacja z muzyką</h3>
+
+              <div class="sync-controls sync-controls-panel">
+                <label class="field">
+                  <span>Tryb synchro</span>
+                  <select id="sync-mode">
+                    <option value="beats" selected>Detekcja beatów z audio</option>
+                    <option value="bpm">Ręczne BPM / tag ID3</option>
+                    <option value="duration">Tylko długość utworu</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>BPM (opcjonalnie)</span>
+                  <input type="number" id="bpm" min="60" max="200" placeholder="auto — nadpisuje detekcję" />
+                </label>
+                <label class="field">
+                  <span>Domyślnie taktów (fallback)</span>
+                  <select id="beats-per-slide">
+                    <option value="8">8 — szybciej</option>
+                    <option value="16" selected>16 — standard</option>
+                    <option value="24">24 — wolno</option>
+                    <option value="32">32 — bardzo wolno</option>
+                  </select>
+                </label>
+                <label class="checkbox-field">
+                  <input type="checkbox" id="sync-to-music" checked />
+                  <span>Synchronizuj slajdy z muzyką</span>
+                </label>
+                <p class="sync-hint muted">
+                  Flow: slajd → tekst → zoom in → zoom out → cięcie. AI ustawia zróżnicowane beats per slajd.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card card-wide">
+          <h2>2. Slajdy i teksty</h2>
+
+          <div class="content-mode" role="radiogroup" aria-label="Tryb treści slajdów">
+            <label class="mode-option">
+              <input type="radio" name="content-mode" value="manual" checked />
+              <span>
+                <strong>Moje teksty</strong>
+                <small>Edytujesz tytuł i podtytuł na każdym slajdzie</small>
+              </span>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="content-mode" value="fromText" />
+              <span>
+                <strong>AI z opisu auta</strong>
+                <small>Wklejasz parametry — AI rozkłada je na slajdy</small>
+              </span>
+            </label>
+          </div>
+
+          <div id="info-text-block" class="info-text-block" hidden>
+            <label class="field field-wide">
+              <span>Opis auta / parametry techniczne</span>
+              <textarea
+                id="info-text"
+                rows="8"
+                placeholder="Np.&#10;BMW M3 Competition&#10;Silnik: 3,0 l R6 twin-turbo · 510 KM · 650 Nm&#10;0–100 km/h: 3,9 s&#10;Skrzynia: 8-biegowa automatyczna&#10;Napęd: xDrive&#10;Bagażnik: 480 l&#10;..."
+              ></textarea>
+            </label>
+            <p class="muted sync-hint">
+              Opisz parametry poniżej — AI ułoży teksty w stylu redakcji motoryzacyjnej (Auto Świat / Top Gear). Przy każdym zdjęciu wpisz <strong>co widać na kadru</strong>.
+            </p>
+          </div>
+
+          <p class="muted sync-hint slide-label-hint">
+            Kliknij kafelek, żeby edytować. Uchwyt ⠿ przeciągnij, żeby zmienić kolejność slajdów.
+          </p>
+
+          <div id="slides-list" class="slides-grid"></div>
+        </section>
+
+        <section class="card card-wide">
+          <h2>3. Prompt AI</h2>
+          <textarea
+            id="prompt"
+            rows="5"
+            placeholder="Np. Dynamiczny reel z szybkimi cięciami, agresywne przejścia wipe i zoom, krótkie slajdy, tekst z dołu..."
+          ></textarea>
+
+          <div class="prompt-hints">
+            <button type="button" class="chip" data-prompt="Dynamiczny reel TikTok, szybkie cięcia, agresywne przejścia wipe i push">
+              Dynamiczny reel
+            </button>
+            <button type="button" class="chip" data-prompt="Spokojny cinematic slideshow, wolne slajdy, delikatne fade i blur">
+              Spokojny cinematic
+            </button>
+            <button type="button" class="chip" data-prompt="Energetyczna prezentacja auta, rotacje, zoom in, krótkie slajdy">
+              Prezentacja auta
+            </button>
+          </div>
+
+          <button class="btn btn-primary" id="generate-btn" type="button">
+            Generuj flow animacji
+          </button>
+          <p id="status" class="status muted"></p>
+        </section>
+
+        <section class="card card-wide">
+          <h2>4. Ostatni manifest</h2>
+          <pre id="manifest-preview" class="manifest">Ładowanie...</pre>
+        </section>
+      </main>
+    </div>
+
+    <div id="slide-modal" class="modal" hidden aria-hidden="true">
+      <div class="modal-backdrop" data-modal-close></div>
+      <div
+        class="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="slide-modal-title"
+      >
+        <header class="modal-header">
+          <h3 id="slide-modal-title">Slajd</h3>
+          <button type="button" class="modal-close" data-modal-close aria-label="Zamknij">
+            ✕
+          </button>
+        </header>
+        <div id="slide-modal-body" class="modal-body"></div>
+      </div>
+    </div>
+
+    <script src="/video/app.js"></script>
+  </body>
+</html>

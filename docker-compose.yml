@@ -1,0 +1,57 @@
+services:
+  # Opcjonalna lokalna baza — domyślnie używamy car_photos-postgres (:5432).
+  # Uruchomienie: docker compose --profile local-db up -d
+  postgres:
+    profiles: ["local-db"]
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-carphotos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-carphotos}
+      POSTGRES_DB: ${POSTGRES_DB:-carphotos}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-carphotos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./photos/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8010:8000"
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-carphotos}:${POSTGRES_PASSWORD:-carphotos}@postgres:5432/${POSTGRES_DB:-carphotos}}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production-32chars}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-10080}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3010,http://localhost:4000}
+      UPLOAD_DIR: /app/storage/uploads
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+    env_file:
+      - project.env
+    volumes:
+      - ./photos/api:/app
+      # Współdzielony storage z legacy car_photos — inaczej miniatury 404 (puste uploads)
+      - photos_api_storage:/app/storage
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - default
+      - car_photos
+
+volumes:
+  postgres_data:
+  photos_api_storage:
+    external: true
+    name: car_photos_api_storage
+
+networks:
+  car_photos:
+    external: true
+    name: car_photos_default

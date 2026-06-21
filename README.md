@@ -1,54 +1,55 @@
-# Remotion video
+# AUTKA.PL — zdjęcia + videoprezentacja
 
-<p align="center">
-  <a href="https://github.com/remotion-dev/logo">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://github.com/remotion-dev/logo/raw/main/animated-logo-banner-dark.apng">
-      <img alt="Animated Remotion Logo" src="https://github.com/remotion-dev/logo/raw/main/animated-logo-banner-light.gif">
-    </picture>
-  </a>
-</p>
+Jeden katalog, jeden terminal.
 
-Welcome to your Remotion project!
+## Pierwsze uruchomienie
 
-## Commands
-
-**Install Dependencies**
-
-```console
-npm i
+```bash
+npm run setup
+cp project.env.example project.env   # jedyny plik konfiguracji — uzupełnij klucze
+npm run setup                        # wygeneruje photos/web/.env.local z project.env
 ```
 
-**Start Preview**
+Wymagane: **Node.js**, **Docker** (PostgreSQL + API zdjęć).
 
-```console
-npm run dev
+## Dev — wszystko naraz
+
+```bash
+npm run dev:all
 ```
 
-**Render video**
+| Usługa | URL |
+|--------|-----|
+| **Logowanie** | http://localhost:3010/login |
+| **Hub (po logowaniu)** | http://localhost:3010/hub |
+| **Zdjęcia** | http://localhost:3010/dashboard |
+| **Wideo** | http://localhost:3010/video (ten sam port co hub — proxy do gateway) |
+| **Remotion Studio** | http://localhost:3000 |
+| **API zdjęć** | http://localhost:8010 |
 
-```console
-npx remotion render
+Flow: **login → hub → zdjęcia albo wideo**. Wejdź na http://localhost:3010 (przekieruje na login).
+
+## Struktura
+
+```
+projekt_autka/
+├── hub/           # (legacy statyczny — hub jest w photos/web /hub)
+├── panel/         # panel videoprezentacji (/video)
+├── server/        # API wideo + gateway
+├── src/           # Remotion
+├── photos/
+│   ├── web/       # Next.js — generator zdjęć
+│   └── api/       # FastAPI — backend zdjęć (Docker)
+├── public/        # assety wideo (uploads/audio/)
+├── generated/     # project.json
+└── project.env    # jedyne źródło konfiguracji (szablon: project.env.example)
 ```
 
-**Upgrade Remotion**
+## Skrypty
 
-```console
-npx remotion upgrade
-```
-
-## Docs
-
-Get started with Remotion by reading the [fundamentals page](https://www.remotion.dev/docs/the-fundamentals).
-
-## Help
-
-We provide help on our [Discord server](https://discord.gg/6VzzNDwUwV).
-
-## Issues
-
-Found an issue with Remotion? [File an issue here](https://github.com/remotion-dev/remotion/issues/new).
-
-## License
-
-Note that for some entities a company license is needed. [Read the terms here](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md).
+| Skrypt | Opis |
+|--------|------|
+| `npm run dev:all` | Docker (DB+API) + zdjęcia web + Studio + gateway |
+| `npm run dev:gateway` | Tylko hub + panel wideo (:4000) |
+| `npm run dev:photos:web` | Tylko Next.js zdjęć (:3010) |
+| `npm run dev` | Tylko Remotion Studio (:3000) |
