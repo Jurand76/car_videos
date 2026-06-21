@@ -23,6 +23,8 @@ let availableAudioTracks = [];
 let audioAnalysisPending = false;
 /** @type {Record<string, unknown> | null} */
 let persistedManifestMeta = null;
+/** Klucz ustawień rytmu z ostatniego «Generuj flow» — omija fałszywe niezgodności BPM/beatów. */
+let lastFlowTimingKey = null;
 
 const ALL_GRAPHIC_EFFECTS = [
   "flash", "glitch", "mosaic", "tilesIn", "shatter", "shockwave", "strobeCut",
@@ -492,6 +494,7 @@ const showProjectsView = () => {
   setProjectInUrl(null);
   activeProjectId = null;
   persistedManifestMeta = null;
+  lastFlowTimingKey = null;
   updateSaveProjectButton();
 };
 
@@ -601,7 +604,25 @@ const createVideoProject = async () => {
 const getTextEnterDelayBeats = () =>
   Number($("text-enter-delay")?.value ?? 0);
 
+const buildFlowTimingKey = () =>
+  JSON.stringify({
+    audio: audioPath ?? null,
+    slideCount: slides.length,
+    syncEnabled: Boolean($("sync-to-music")?.checked),
+    syncMode: $("sync-mode")?.value ?? "beats",
+    beatsPerSlide: Number($("beats-per-slide")?.value) || 16,
+    textEnterDelayBeats: getTextEnterDelayBeats(),
+    bpm: $("bpm")?.value.trim()
+      ? Number($("bpm").value)
+      : Math.round(beatAnalysis?.bpm ?? detectedBpm ?? 0) || null,
+  });
+
+const markFlowTimingFresh = () => {
+  lastFlowTimingKey = buildFlowTimingKey();
+};
+
 const invalidateDerivedTiming = () => {
+  lastFlowTimingKey = null;
   if (!persistedManifestMeta) return;
   persistedManifestMeta = {
     ...persistedManifestMeta,
@@ -630,18 +651,8 @@ const isFlowTimingFresh = () => {
     return Boolean(persistedManifestMeta?.slideTimings?.length || !audioPath);
   }
   if (!persistedManifestMeta?.slideTimings?.length) return false;
-  if (persistedManifestMeta.audio !== audioPath) return false;
-  if ((persistedManifestMeta.slides?.length ?? 0) !== slides.length) return false;
-  if (persistedManifestMeta.sync?.beatsPerSlide !== Number($("beats-per-slide").value)) {
-    return false;
-  }
-  if (persistedManifestMeta.sync?.mode !== $("sync-mode").value) return false;
-  const bpmInput = $("bpm").value.trim();
-  const currentBpm = bpmInput
-    ? Number(bpmInput)
-    : (beatAnalysis?.bpm ?? detectedBpm ?? null);
-  if ((persistedManifestMeta.sync?.bpm ?? null) !== (currentBpm ?? null)) return false;
-  return true;
+  if (!lastFlowTimingKey) return false;
+  return buildFlowTimingKey() === lastFlowTimingKey;
 };
 
 const buildSyncFromEditor = () => {
@@ -767,6 +778,7 @@ const saveCurrentProjectDraft = async () => {
 
 const resetEditorState = () => {
   persistedManifestMeta = null;
+  lastFlowTimingKey = null;
   slides = [];
   audioPath = null;
   audioDurationSeconds = null;
@@ -833,6 +845,9 @@ const applyManifestToEditor = (project) => {
   updateAudioMeta();
   renderSlides();
   $("manifest-preview").textContent = JSON.stringify(project, null, 2);
+  if (project.slideTimings?.length && project.sync?.enabled !== false) {
+    markFlowTimingFresh();
+  }
 };
 
 const openProject = async (projectId, options = {}) => {
@@ -1842,6 +1857,7 @@ const generate = async () => {
     slides = data.project.slides ?? slides;
     applyEffectsFromManifest(data.project);
     renderSlides();
+    markFlowTimingFresh();
     if (data.project) {
       videoProjects = videoProjects.map((item) =>
         item.id === activeProjectId
