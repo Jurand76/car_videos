@@ -195,3 +195,41 @@ export const applyMusicSync = async (
     sync: withTextEnterDelay(syncResult.sync, input, manifest),
   };
 };
+
+/** Przed renderem MP4 — przelicz timing do aktualnej muzyki i ustawień sync. */
+export const prepareManifestForRender = async (
+  manifest: ProjectManifest,
+  root: string,
+): Promise<ProjectManifest> => {
+  if (!manifest.sync?.enabled || !manifest.audio) {
+    return manifest;
+  }
+
+  const input: GenerateInput = {
+    prompt: manifest.prompt,
+    slides: manifest.slides,
+    audio: manifest.audio,
+    bpm: manifest.sync.bpm,
+    beatsPerSlide: manifest.sync.beatsPerSlide,
+    textEnterDelayBeats: manifest.sync.textEnterDelayBeats,
+    audioDurationSeconds: manifest.sync.audioDurationSeconds,
+    syncToMusic: true,
+    syncMode: manifest.sync.mode ?? "beats",
+    preserveSlideCopy: true,
+    allowedTransitions: manifest.allowedTransitions,
+    allowedTextEffects: manifest.allowedTextEffects,
+    beatTimesSeconds: manifest.sync.beatTimesSeconds,
+    analyzer: manifest.sync.analyzer,
+    confidence: manifest.sync.confidence,
+  };
+
+  return applyMusicSync(
+    {
+      ...manifest,
+      slideTimings: undefined,
+      totalDurationFrames: undefined,
+    },
+    input,
+    root,
+  );
+};

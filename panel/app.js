@@ -339,6 +339,9 @@ const applyAudioTrack = async (path, { analyze = true, silent = false } = {}) =>
   }
 
   const track = availableAudioTracks.find((item) => item.path === path);
+  if (path !== persistedManifestMeta?.audio) {
+    invalidateDerivedTiming();
+  }
   audioPath = path;
   audioDurationSeconds = track?.durationSeconds || null;
   detectedBpm = track?.bpm || null;
@@ -598,42 +601,108 @@ const createVideoProject = async () => {
 const getTextEnterDelayBeats = () =>
   Number($("text-enter-delay")?.value ?? 0);
 
-const buildManifestFromEditor = () => ({
-  version: 1,
-  prompt: $("prompt").value.trim(),
-  contentMode: getContentMode(),
-  infoText: $("info-text").value.trim(),
-  generatedAt: new Date().toISOString(),
-  generatedBy: persistedManifestMeta?.generatedBy ?? "heuristic",
-  fps: persistedManifestMeta?.fps ?? 30,
-  width: persistedManifestMeta?.width ?? 1280,
-  height: persistedManifestMeta?.height ?? 720,
-  slideDuration: persistedManifestMeta?.slideDuration ?? 90,
-  transitionDuration: persistedManifestMeta?.transitionDuration ?? 20,
-  kenBurns: persistedManifestMeta?.kenBurns ?? true,
-  audio: audioPath,
-  audioVolume: persistedManifestMeta?.audioVolume ?? 0.7,
-  slides,
-  useAllPublicImages: false,
-  allowedTransitions: getSelectedGraphicEffects(),
-  allowedTextEffects: getSelectedTextEffects(),
-  slideTimings: persistedManifestMeta?.slideTimings,
-  totalDurationFrames: persistedManifestMeta?.totalDurationFrames,
-  sync: {
-    ...(persistedManifestMeta?.sync ?? {}),
+const invalidateDerivedTiming = () => {
+  if (!persistedManifestMeta) return;
+  persistedManifestMeta = {
+    ...persistedManifestMeta,
+    slideTimings: undefined,
+    totalDurationFrames: undefined,
+    sync: persistedManifestMeta.sync
+      ? {
+          ...persistedManifestMeta.sync,
+          beatTimesSeconds: undefined,
+          slideTransitionDurations: undefined,
+          cutTimesSeconds: undefined,
+        }
+      : persistedManifestMeta.sync,
+  };
+  if (beatAnalysis) {
+    beatAnalysis = {
+      ...beatAnalysis,
+      beatTimesSeconds: null,
+      beatStrengths: null,
+    };
+  }
+};
+
+const isFlowTimingFresh = () => {
+  if (!$("sync-to-music")?.checked) {
+    return Boolean(persistedManifestMeta?.slideTimings?.length || !audioPath);
+  }
+  if (!persistedManifestMeta?.slideTimings?.length) return false;
+  if (persistedManifestMeta.audio !== audioPath) return false;
+  if ((persistedManifestMeta.slides?.length ?? 0) !== slides.length) return false;
+  if (persistedManifestMeta.sync?.beatsPerSlide !== Number($("beats-per-slide").value)) {
+    return false;
+  }
+  if (persistedManifestMeta.sync?.mode !== $("sync-mode").value) return false;
+  const bpmInput = $("bpm").value.trim();
+  const currentBpm = bpmInput
+    ? Number(bpmInput)
+    : (beatAnalysis?.bpm ?? detectedBpm ?? null);
+  if ((persistedManifestMeta.sync?.bpm ?? null) !== (currentBpm ?? null)) return false;
+  return true;
+};
+
+const buildSyncFromEditor = () => {
+  const prevSync = persistedManifestMeta?.sync ?? {};
+  const audioUnchanged = Boolean(audioPath && persistedManifestMeta?.audio === audioPath);
+  const sync = {
     enabled: $("sync-to-music").checked,
     mode: $("sync-mode").value,
     beatsPerSlide: Number($("beats-per-slide").value) || 16,
     textEnterDelayBeats: getTextEnterDelayBeats(),
     bpm: $("bpm").value.trim()
       ? Number($("bpm").value)
-      : (detectedBpm ?? beatAnalysis?.bpm ?? persistedManifestMeta?.sync?.bpm ?? null),
-    beatCount: beatAnalysis?.beatCount ?? persistedManifestMeta?.sync?.beatCount ?? null,
-    confidence: beatAnalysis?.confidence ?? persistedManifestMeta?.sync?.confidence ?? null,
+      : (detectedBpm ?? beatAnalysis?.bpm ?? prevSync.bpm ?? null),
+    beatCount: beatAnalysis?.beatCount ?? prevSync.beatCount ?? null,
+    confidence: beatAnalysis?.confidence ?? prevSync.confidence ?? null,
+    analyzer: beatAnalysis?.analyzer ?? prevSync.analyzer,
     audioDurationSeconds:
-      audioDurationSeconds ?? persistedManifestMeta?.sync?.audioDurationSeconds ?? 0,
-  },
-});
+      audioDurationSeconds ?? prevSync.audioDurationSeconds ?? 0,
+  };
+
+  if (beatAnalysis?.beatTimesSeconds?.length) {
+    sync.beatTimesSeconds = beatAnalysis.beatTimesSeconds;
+  } else if (audioUnchanged && prevSync.beatTimesSeconds?.length) {
+    sync.beatTimesSeconds = prevSync.beatTimesSeconds;
+  }
+
+  if (audioUnchanged && prevSync.slideTransitionDurations?.length) {
+    sync.slideTransitionDurations = prevSync.slideTransitionDurations;
+  }
+
+  return sync;
+};
+
+const buildManifestFromEditor = () => {
+  const audioUnchanged = Boolean(audioPath && persistedManifestMeta?.audio === audioPath);
+  const timingFresh = isFlowTimingFresh();
+
+  return {
+    version: 1,
+    prompt: $("prompt").value.trim(),
+    contentMode: getContentMode(),
+    infoText: $("info-text").value.trim(),
+    generatedAt: persistedManifestMeta?.generatedAt ?? new Date().toISOString(),
+    generatedBy: persistedManifestMeta?.generatedBy ?? "heuristic",
+    fps: persistedManifestMeta?.fps ?? 30,
+    width: persistedManifestMeta?.width ?? 1280,
+    height: persistedManifestMeta?.height ?? 720,
+    slideDuration: persistedManifestMeta?.slideDuration ?? 90,
+    transitionDuration: persistedManifestMeta?.transitionDuration ?? 20,
+    kenBurns: persistedManifestMeta?.kenBurns ?? true,
+    audio: audioPath,
+    audioVolume: persistedManifestMeta?.audioVolume ?? 0.7,
+    slides,
+    useAllPublicImages: false,
+    allowedTransitions: getSelectedGraphicEffects(),
+    allowedTextEffects: getSelectedTextEffects(),
+    slideTimings: timingFresh ? persistedManifestMeta?.slideTimings : undefined,
+    totalDurationFrames: timingFresh ? persistedManifestMeta?.totalDurationFrames : undefined,
+    sync: buildSyncFromEditor(),
+  };
+};
 
 const setSaveProjectStatus = (message, type = "") => {
   const el = $("save-project-status");
@@ -742,11 +811,20 @@ const applyManifestToEditor = (project) => {
   if (project.sync?.bpm) {
     $("bpm").value = String(project.sync.bpm);
   }
-  if (project.sync?.beatCount && project.sync?.bpm) {
+  if (project.sync?.beatTimesSeconds?.length) {
+    beatAnalysis = {
+      bpm: project.sync.bpm,
+      beatCount: project.sync.beatCount ?? project.sync.beatTimesSeconds.length,
+      confidence: project.sync.confidence ?? 0.7,
+      analyzer: project.sync.analyzer ?? "legacy",
+      beatTimesSeconds: project.sync.beatTimesSeconds,
+    };
+  } else if (project.sync?.beatCount && project.sync?.bpm) {
     beatAnalysis = {
       bpm: project.sync.bpm,
       beatCount: project.sync.beatCount,
       confidence: project.sync.confidence ?? 0.7,
+      analyzer: project.sync.analyzer ?? "legacy",
     };
   }
   $("sync-to-music").checked = project.sync?.enabled !== false;
@@ -980,6 +1058,7 @@ const moveSlide = (fromIndex, toIndex) => {
   }
 
   renderSlides();
+  invalidateDerivedTiming();
 };
 
 const removeSlide = (index) => {
@@ -991,6 +1070,7 @@ const removeSlide = (index) => {
   }
   slides.splice(index, 1);
   renderSlides();
+  invalidateDerivedTiming();
 };
 
 const getLocationLabel = (location) =>
@@ -1145,6 +1225,7 @@ const renderSlideModal = () => {
     slides.splice(index, 1);
     closeSlideModal();
     renderSlides();
+    invalidateDerivedTiming();
   });
 
   body.querySelectorAll("[data-modal-close]").forEach((btn) => {
@@ -1318,6 +1399,9 @@ const addSlidesFromPaths = (paths, defaultLocation) => {
       sceneLabel: "",
     });
     added++;
+  }
+  if (added > 0) {
+    invalidateDerivedTiming();
   }
   renderSlides();
   return added;
@@ -1501,6 +1585,7 @@ const generateDescriptions = async () => {
 
     slides = data.slides ?? data.project?.slides ?? slides;
     persistedManifestMeta = data.project ?? persistedManifestMeta;
+    invalidateDerivedTiming();
     if (data.project) {
       $("manifest-preview").textContent = JSON.stringify(data.project, null, 2);
       videoProjects = videoProjects.map((item) =>
@@ -1653,6 +1738,12 @@ const exportVideoToDisk = async () => {
   setExportProgressUi({ visible: false, percent: 0, label: "" });
 
   try {
+    if ($("sync-to-music")?.checked && !isFlowTimingFresh()) {
+      throw new Error(
+        "Muzyka lub rytm się zmieniły — najpierw kliknij «Generuj flow animacji», potem eksportuj MP4.",
+      );
+    }
+
     setExportStatus("Zapisuję projekt przed renderem…");
     await saveCurrentProjectDraft();
 
@@ -1874,7 +1965,17 @@ document.querySelectorAll(".chip").forEach((chip) => {
   });
 });
 
-$("sync-mode").addEventListener("change", updateAudioMeta);
+$("sync-mode").addEventListener("change", () => {
+  invalidateDerivedTiming();
+  updateAudioMeta();
+});
+$("beats-per-slide")?.addEventListener("change", invalidateDerivedTiming);
+$("beats-per-slide")?.addEventListener("input", invalidateDerivedTiming);
+$("bpm")?.addEventListener("change", invalidateDerivedTiming);
+$("sync-to-music")?.addEventListener("change", () => {
+  invalidateDerivedTiming();
+  updateAudioMeta();
+});
 
 document.querySelectorAll('input[name="content-mode"]').forEach((input) => {
   input.addEventListener("change", updateContentModeUi);

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ProjectManifest } from "../src/projectTypes";
 import { writeProject } from "./generate";
+import { prepareManifestForRender } from "./syncProject";
 import {
   getExportJobById,
   parseRemotionLogChunk,
@@ -98,7 +99,8 @@ export const renderProjectVideo = async (
       message: "Zapisuję manifest przed renderem…",
     });
 
-    writeProject(manifest, PROJECT_PATH);
+    const prepared = await prepareManifestForRender(manifest, ROOT);
+    writeProject(prepared, PROJECT_PATH);
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     if (fs.existsSync(outputPath)) {
       fs.unlinkSync(outputPath);
