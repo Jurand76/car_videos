@@ -958,6 +958,35 @@ a.btn-primary:hover {
   line-height: 1.45;
 }
 
+.export-progress {
+  margin-top: 12px;
+}
+
+.export-progress[hidden] {
+  display: none !important;
+}
+
+.export-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.export-progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #38bdf8);
+  transition: width 0.35s ease;
+}
+
+.export-progress-label {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: var(--muted, #64748b);
+}
+
 .mode-option {
   display: flex;
   gap: 10px;

@@ -31,6 +31,14 @@ import {
   renderProjectVideo,
   sanitizeExportFilename,
 } from "./renderExport";
+import {
+  completeExportJob,
+  createExportJob,
+  exportJobToJson,
+  failExportJob,
+  getExportJob,
+  removeExportJob,
+} from "./exportJobs";
 
 loadProjectEnv();
 
@@ -263,7 +271,7 @@ app.delete("/api/video-projects/:id", requireVideoAuthApi, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/video-projects/:id/export", requireVideoAuthApi, async (req, res) => {
+app.post("/api/video-projects/:id/export", requireVideoAuthApi, (req, res) => {
   const userId = req.videoUser!.id;
   const projectId = req.params.id;
   const manifest = getVideoProjectManifest(userId, projectId);
@@ -281,30 +289,91 @@ app.post("/api/video-projects/:id/export", requireVideoAuthApi, async (req, res)
   const summary = listVideoProjects(userId).find((item) => item.id === projectId);
   const downloadName = `${sanitizeExportFilename(summary?.name ?? "wideo-autka")}.mp4`;
   const outputPath = createExportOutputPath(projectId);
+  const job = createExportJob({
+    userId,
+    projectId,
+    downloadName,
+    outputPath,
+  });
 
-  try {
-    await renderProjectVideo(manifest, outputPath);
+  res.status(202).json(exportJobToJson(job));
 
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`,
-    );
-
-    await pipeline(fs.createReadStream(outputPath), res);
-  } catch (error) {
-    if (!res.headersSent) {
-      res.status(500).json({
-        error:
-          error instanceof Error
-            ? error.message
-            : "Nie udało się wyrenderować wideo.",
-      });
-    }
-  } finally {
-    cleanupExportFile(outputPath);
-  }
+  void renderProjectVideo(manifest, outputPath, job)
+    .then(() => {
+      completeExportJob(job.id);
+    })
+    .catch((error) => {
+      failExportJob(
+        job.id,
+        error instanceof Error ? error.message : "Nie udało się wyrenderować wideo.",
+      );
+      cleanupExportFile(outputPath);
+    });
 });
+
+app.get("/api/video-projects/:id/export/:jobId", requireVideoAuthApi, (req, res) => {
+  const userId = req.videoUser!.id;
+  const { id: projectId, jobId } = req.params;
+  const job = getExportJob(jobId, userId, projectId);
+
+  if (!job) {
+    res.status(404).json({ error: "Nie znaleziono zadania eksportu." });
+    return;
+  }
+
+  res.json(exportJobToJson(job));
+});
+
+app.get(
+  "/api/video-projects/:id/export/:jobId/file",
+  requireVideoAuthApi,
+  async (req, res) => {
+    const userId = req.videoUser!.id;
+    const { id: projectId, jobId } = req.params;
+    const job = getExportJob(jobId, userId, projectId);
+
+    if (!job) {
+      res.status(404).json({ error: "Nie znaleziono zadania eksportu." });
+      return;
+    }
+
+    if (job.status === "error") {
+      res.status(500).json({ error: job.error ?? "Render wideo nieudany." });
+      return;
+    }
+
+    if (job.status !== "done") {
+      res.status(409).json({ error: "Render wideo jeszcze trwa." });
+      return;
+    }
+
+    if (!fs.existsSync(job.outputPath)) {
+      res.status(404).json({ error: "Plik wideo nie jest już dostępny." });
+      return;
+    }
+
+    try {
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(job.downloadName)}`,
+      );
+      await pipeline(fs.createReadStream(job.outputPath), res);
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({
+          error:
+            error instanceof Error
+              ? error.message
+              : "Nie udało się pobrać pliku wideo.",
+        });
+      }
+    } finally {
+      cleanupExportFile(job.outputPath);
+      removeExportJob(job.id);
+    }
+  },
+);
 
 app.get("/api/assets", (_req, res) => {
   res.json({ assets: listAssets() });

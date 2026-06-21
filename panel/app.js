@@ -914,6 +914,16 @@ const readApiJson = async (res, fallbackMessage = "Błąd serwera.") => {
   }
 };
 
+const parseApiResponse = async (res, fallbackMessage = "Błąd serwera.") => {
+  const data = await readApiJson(res, fallbackMessage);
+  if (!res.ok) {
+    throw new Error(data.error ?? fallbackMessage);
+  }
+  return data;
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const setDescriptionsStatus = (message, type = "") => {
   const el = $("descriptions-status");
   if (!el) return;
@@ -1487,8 +1497,7 @@ const generateDescriptions = async () => {
         useAllPublicImages: false,
       }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "Generowanie opisów nieudane");
+    const data = await parseApiResponse(res, "Generowanie opisów nieudane");
 
     slides = data.slides ?? data.project?.slides ?? slides;
     persistedManifestMeta = data.project ?? persistedManifestMeta;
@@ -1523,6 +1532,48 @@ const setExportStatus = (message, type = "") => {
   if (!el) return;
   el.textContent = message;
   el.className = `generate-action-status${type ? ` ${type}` : ""}`;
+};
+
+const setExportProgressUi = ({ visible, percent = 0, label = "" } = {}) => {
+  const wrap = $("export-progress");
+  const bar = $("export-progress-bar");
+  const labelEl = $("export-progress-label");
+  if (wrap) {
+    if (visible) wrap.removeAttribute("hidden");
+    else wrap.setAttribute("hidden", "");
+  }
+  if (bar) bar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+  if (labelEl) labelEl.textContent = label;
+};
+
+const waitForExportJob = async (projectId, jobId) => {
+  for (;;) {
+    const res = await fetch(
+      `/api/video-projects/${encodeURIComponent(projectId)}/export/${encodeURIComponent(jobId)}`,
+    );
+    const data = await parseApiResponse(res, "Nie udało się sprawdzić postępu renderu.");
+
+    const percent = Math.round((data.progress ?? 0) * 100);
+    const frameLabel =
+      data.totalFrames > 0
+        ? ` · ${data.renderedFrames}/${data.totalFrames} klatek`
+        : "";
+    setExportProgressUi({
+      visible: true,
+      percent,
+      label: `${data.message ?? "Renderuję wideo…"} (${percent}%)${frameLabel}`,
+    });
+    setExportStatus(data.message ?? "Renderuję wideo…");
+
+    if (data.status === "done") {
+      return data;
+    }
+    if (data.status === "error") {
+      throw new Error(data.error ?? "Render wideo nieudany.");
+    }
+
+    await sleep(1000);
+  }
 };
 
 const sanitizeExportFilename = (name) => {
@@ -1599,33 +1650,32 @@ const exportVideoToDisk = async () => {
 
   const btn = $("export-video-btn");
   if (btn) btn.disabled = true;
+  setExportProgressUi({ visible: false, percent: 0, label: "" });
 
   try {
     setExportStatus("Zapisuję projekt przed renderem…");
     await saveCurrentProjectDraft();
 
-    setExportStatus(
-      "Renderuję wideo na serwerze — to może potrwać kilka minut. Nie zamykaj karty.",
-    );
-
-    const res = await fetch(
+    setExportStatus("Uruchamiam render wideo…");
+    const startRes = await fetch(
       `/api/video-projects/${encodeURIComponent(activeProjectId)}/export`,
       { method: "POST" },
     );
+    const startData = await parseApiResponse(startRes, "Eksport wideo nieudany.");
+    await waitForExportJob(activeProjectId, startData.jobId);
 
-    if (!res.ok) {
-      let message = "Eksport wideo nieudany.";
-      try {
-        const data = await res.json();
-        message = data.error ?? message;
-      } catch {
-        message = (await res.text()) || message;
-      }
-      throw new Error(message);
+    setExportStatus("Pobieram plik MP4…");
+    setExportProgressUi({ visible: true, percent: 100, label: "Pobieram plik MP4…" });
+
+    const fileRes = await fetch(
+      `/api/video-projects/${encodeURIComponent(activeProjectId)}/export/${encodeURIComponent(startData.jobId)}/file`,
+    );
+    if (!fileRes.ok) {
+      await parseApiResponse(fileRes, "Pobieranie MP4 nieudane.");
     }
 
     setExportStatus("Zapisuję plik na dysku…");
-    const blob = await res.blob();
+    const blob = await fileRes.blob();
     await saveVideoBlobLocally(blob, saveTarget);
 
     setExportStatus(
@@ -1638,6 +1688,7 @@ const exportVideoToDisk = async () => {
     setExportStatus(error instanceof Error ? error.message : "Eksport nieudany.", "err");
   } finally {
     if (btn) btn.disabled = false;
+    setExportProgressUi({ visible: false, percent: 0, label: "" });
   }
 };
 
@@ -1693,8 +1744,7 @@ const generate = async () => {
         confidence: beatAnalysis?.confidence ?? undefined,
       }),
     });
-    const data = await readApiJson(res, "Generowanie nieudane.");
-    if (!res.ok) throw new Error(data.error ?? "Generowanie nieudane");
+    const data = await parseApiResponse(res, "Generowanie nieudane");
 
     $("manifest-preview").textContent = JSON.stringify(data.project, null, 2);
     persistedManifestMeta = data.project;
