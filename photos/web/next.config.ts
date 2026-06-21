@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
       { source: "/api/logout", destination: `${gatewayUrl}/api/logout` },
       { source: "/api/project", destination: `${gatewayUrl}/api/project` },
       { source: "/api/assets", destination: `${gatewayUrl}/api/assets` },
+      { source: "/api/audio", destination: `${gatewayUrl}/api/audio` },
       { source: "/api/upload/:path*", destination: `${gatewayUrl}/api/upload/:path*` },
       { source: "/api/analyze-audio", destination: `${gatewayUrl}/api/analyze-audio` },
       { source: "/api/generate-descriptions", destination: `${gatewayUrl}/api/generate-descriptions` },

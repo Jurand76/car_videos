@@ -1,4 +1,5 @@
 import { interpolate, useVideoConfig } from "remotion";
+import { ALLOWED_TEXT_EFFECTS } from "../project";
 import {
   getBoomSpring,
   getClassicEntrance,
@@ -15,6 +16,7 @@ import {
   hashUnit,
   mosaicCellProgress,
   supportsShatterOut,
+  TEXT_EFFECTS,
   type TextEffect,
 } from "./textEffects";
 
@@ -22,6 +24,7 @@ type AnimatedSlideTextProps = {
   title: string;
   subtitle?: string;
   slideIndex: number;
+  textEffect?: TextEffect;
   localFrame: number;
   hideStartFrame: number;
   baseOpacity: number;
@@ -421,19 +424,22 @@ export const AnimatedSlideText: React.FC<AnimatedSlideTextProps> = ({
   title,
   subtitle,
   slideIndex,
+  textEffect,
   localFrame,
   hideStartFrame,
   baseOpacity,
 }) => {
   const { fps } = useVideoConfig();
-  const effect = getTextEffect(slideIndex);
+  const effect =
+    textEffect ??
+    getTextEffect(slideIndex, ALLOWED_TEXT_EFFECTS ?? TEXT_EFFECTS);
   const progress = getEnterProgress(localFrame, fps, effect);
   const outProgress =
     supportsShatterOut(effect) && hideStartFrame < Number.MAX_SAFE_INTEGER / 2
       ? getShatterOutProgress(localFrame, hideStartFrame, fps)
       : 0;
 
-  const subtitleDelay = Math.round(fps * 0.12);
+  const subtitleDelay = Math.round(fps * 0.05);
   const subtitleLocal = localFrame - subtitleDelay;
   const subtitleProgress =
     subtitleLocal > 0 ? getEnterProgress(subtitleLocal, fps, "blurIn") : 0;

@@ -1,12 +1,15 @@
 import { EssentiaWASM, Essentia } from "essentia.js";
+import {
+  accentStrengthNear,
+  buildBeatStrengthsFromAccents,
+  detectAccentsFromSamples,
+  type AccentPoint,
+} from "./accentDetect";
 import { decodeAudioToMono } from "./beatDetect";
 
 const ESSENTIA_SAMPLE_RATE = 44100;
 
-export type AccentPoint = {
-  timeSeconds: number;
-  strength: number;
-};
+export type { AccentPoint };
 
 export type BeatAnalysis = {
   bpm: number;
@@ -35,90 +38,20 @@ const vectorToArray = (vector: { size: () => number; get: (i: number) => number 
   return values;
 };
 
-const rmsAt = (
-  samples: Float32Array,
+const extractSuperFluxOnsets = (
+  essentia: Essentia,
+  vector: ReturnType<Essentia["arrayToVector"]>,
   sampleRate: number,
-  timeSeconds: number,
-  windowSeconds: number,
-) => {
-  const center = Math.round(timeSeconds * sampleRate);
-  const half = Math.round((windowSeconds * sampleRate) / 2);
-  const start = Math.max(0, center - half);
-  const end = Math.min(samples.length, center + half);
-  if (end <= start) return 0;
-
-  let sum = 0;
-  for (let i = start; i < end; i++) {
-    sum += samples[i] * samples[i];
+  durationSeconds: number,
+): number[] => {
+  try {
+    const result = essentia.SuperFluxExtractor(vector, sampleRate);
+    return vectorToArray(result.onsets).filter(
+      (time) => time >= 0 && time <= durationSeconds + 0.05,
+    );
+  } catch {
+    return [];
   }
-  return Math.sqrt(sum / (end - start));
-};
-
-const normalizeStrengths = (values: number[]) => {
-  if (values.length === 0) return values;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = Math.max(max - min, 1e-6);
-  return values.map((v) => Math.min(1, Math.max(0, (v - min) / span)));
-};
-
-const scoreOnsetAt = (onsets: number[], timeSeconds: number, window = 0.07) => {
-  let best = 0;
-  for (const onset of onsets) {
-    const dist = Math.abs(onset - timeSeconds);
-    if (dist <= window) {
-      best = Math.max(best, 1 - dist / window);
-    }
-  }
-  return best;
-};
-
-const buildBeatStrengths = (
-  beats: number[],
-  onsets: number[],
-  samples: Float32Array,
-  sampleRate: number,
-) => {
-  const rmsValues = beats.map((time) => rmsAt(samples, sampleRate, time, 0.09));
-  const rmsNorm = normalizeStrengths(rmsValues);
-
-  return beats.map((time, index) => {
-    const onsetHit = scoreOnsetAt(onsets, time);
-    const downbeat = index % 4 === 0 ? 0.12 : 0;
-    const raw = rmsNorm[index] * 0.55 + onsetHit * 0.35 + downbeat;
-    return Math.min(1, Math.max(0.08, raw));
-  });
-};
-
-const buildAccentPoints = (
-  beats: number[],
-  beatStrengths: number[],
-  onsets: number[],
-  samples: Float32Array,
-  sampleRate: number,
-): AccentPoint[] => {
-  const points: AccentPoint[] = beats.map((time, index) => ({
-    timeSeconds: time,
-    strength: beatStrengths[index],
-  }));
-
-  for (const onset of onsets) {
-    const tooClose = points.some((p) => Math.abs(p.timeSeconds - onset) < 0.06);
-    if (tooClose) continue;
-    const loudness = rmsAt(samples, sampleRate, onset, 0.06);
-    points.push({
-      timeSeconds: onset,
-      strength: Math.min(1, loudness * 8),
-    });
-  }
-
-  points.sort((a, b) => a.timeSeconds - b.timeSeconds);
-
-  const accentStrengths = normalizeStrengths(points.map((p) => p.strength));
-  return points.map((point, index) => ({
-    ...point,
-    strength: accentStrengths[index],
-  }));
 };
 
 export const analyzeWithEssentia = async (
@@ -134,32 +67,45 @@ export const analyzeWithEssentia = async (
     (time) => time >= 0 && time <= durationSeconds + 0.05,
   );
 
-  const onsetResult = essentia.OnsetRate(vector);
-  const onsets = vectorToArray(onsetResult.onsets).filter(
-    (time) => time >= 0 && time <= durationSeconds + 0.05,
-  );
-
   const bpm = Number(rhythm.bpm) || 120;
   const confidence = Math.min(
     1,
     Number(Number(rhythm.confidence ?? 0).toFixed(2)) / 4,
   );
 
-  const beatStrengths = buildBeatStrengths(beats, onsets, samples, ESSENTIA_SAMPLE_RATE);
-  const accentPoints = buildAccentPoints(
+  const superFluxOnsets = extractSuperFluxOnsets(
+    essentia,
+    vector,
+    ESSENTIA_SAMPLE_RATE,
+    durationSeconds,
+  );
+
+  const { accentPoints, onsetTimesSeconds } = detectAccentsFromSamples(
+    samples,
+    ESSENTIA_SAMPLE_RATE,
+    durationSeconds,
+    [],
+    superFluxOnsets,
+  );
+
+  const beatStrengths = buildBeatStrengthsFromAccents(
     beats,
-    beatStrengths,
-    onsets,
+    accentPoints,
     samples,
     ESSENTIA_SAMPLE_RATE,
   );
 
+  const beatsWithAccentBias = beatStrengths.map((baseStrength, index) => {
+    const accent = accentStrengthNear(accentPoints, beats[index], 0.1);
+    return Math.min(1, Math.max(baseStrength, accent * 0.95));
+  });
+
   return {
     bpm: Math.round(bpm),
     beatTimesSeconds: beats,
-    beatStrengths,
+    beatStrengths: beatsWithAccentBias,
     accentPoints,
-    onsetTimesSeconds: onsets,
+    onsetTimesSeconds,
     confidence,
     analyzer: "essentia",
   };

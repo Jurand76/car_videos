@@ -6,8 +6,40 @@ export type SlideTiming = {
 /** Czas fade-outu (czarny ekran + wyciszenie) po ostatnim slajdzie. */
 export const OUTRO_DURATION_SECONDS = 2;
 
+/** Dodatkowy czas na ostatnim slajdzie zanim zacznie się outro. */
+export const LAST_SLIDE_TAIL_SECONDS = 1.5;
+
+export const MIN_BEATS_PER_SLIDE = 2;
+export const MAX_BEATS_PER_SLIDE = 48;
+
+export const clampBeats = (value: number): number =>
+  Math.max(MIN_BEATS_PER_SLIDE, Math.min(MAX_BEATS_PER_SLIDE, Math.round(value)));
+
+export const resolveSlideBeats = (
+  slides: { beats?: number }[],
+  defaultBeats: number,
+): number[] => assignVariedBeats(slides.length, clampBeats(defaultBeats));
+
+/** Profil tempa z panelu (beatsPerSlide). */
+export const getTempoProfile = (beatsPerSlide: number) => {
+  const beats = clampBeats(beatsPerSlide);
+  const tempoScale = Math.max(0.2, Math.min(1, beats / 16));
+  return {
+    beats,
+    tempoScale,
+    strictRhythm: beats <= 4,
+    kenBurns: beats >= 10,
+    preferDynamicTransitions: beats <= 8,
+    transitionMinFrames: beats <= 4 ? 4 : beats <= 8 ? 6 : 8,
+    transitionMaxFrames: Math.max(6, Math.round(28 * tempoScale)),
+  };
+};
+
 export const getOutroDurationFrames = (fps: number): number =>
   Math.round(OUTRO_DURATION_SECONDS * fps);
+
+export const getLastSlideTailFrames = (fps: number): number =>
+  Math.round(LAST_SLIDE_TAIL_SECONDS * fps);
 
 const slidesEndFrame = (slideTimings: SlideTiming[]): number => {
   if (!slideTimings.length) return 0;
@@ -15,8 +47,20 @@ const slidesEndFrame = (slideTimings: SlideTiming[]): number => {
   return last.from + last.duration;
 };
 
-const totalWithOutro = (slideTimings: SlideTiming[], fps: number): number =>
-  slidesEndFrame(slideTimings) + getOutroDurationFrames(fps);
+const totalWithOutro = (
+  slideTimings: SlideTiming[],
+  fps: number,
+  audioDurationSeconds = 0,
+): number => {
+  const ideal =
+    slidesEndFrame(slideTimings) +
+    getLastSlideTailFrames(fps) +
+    getOutroDurationFrames(fps);
+  if (audioDurationSeconds > 0) {
+    return Math.min(ideal, Math.round(audioDurationSeconds * fps));
+  }
+  return ideal;
+};
 
 export type MusicSyncInfo = {
   enabled: boolean;
@@ -32,6 +76,8 @@ export type MusicSyncInfo = {
   analyzer?: "essentia" | "legacy";
   cutTimesSeconds?: number[];
   slideTransitionDurations?: number[];
+  /** Opóźnienie wejścia tekstu w taktach (0, 1, 2, 4, 6, 8, 10). */
+  textEnterDelayBeats?: number;
   animationPhases?: import("./slideAnimation").AnimationPhases;
 };
 
@@ -72,8 +118,73 @@ export const assignVariedBeats = (
   const pattern = VARIED_BEAT_PATTERNS[slideCount % VARIED_BEAT_PATTERNS.length];
   return Array.from({ length: slideCount }, (_, i) => {
     const raw = pattern[i % pattern.length];
-    return Math.max(4, Math.min(48, Math.round(raw * scale)));
+    return clampBeats(raw * scale);
   });
+};
+
+const fitSlideBeatsToBudget = (
+  slideBeats: number[],
+  beatCount: number,
+): number[] => {
+  const budget = Math.max(
+    slideBeats.length * MIN_BEATS_PER_SLIDE,
+    Math.floor(beatCount * 0.95),
+  );
+  const rawTotal = slideBeats.reduce((sum, b) => sum + b, 0);
+  if (rawTotal <= budget) {
+    return slideBeats.map(clampBeats);
+  }
+  const scale = budget / rawTotal;
+  return slideBeats.map((b) => clampBeats(b * scale));
+};
+
+const slideBeatsRadius = (beatsForSlide: number, strictRhythm = false): number =>
+  strictRhythm ? 0 : beatsForSlide <= 4 ? 1 : beatsForSlide <= 8 ? 2 : 3;
+
+const pickBeatForSlide = (
+  targetBeat: number,
+  beatCursor: number,
+  strengths: number[],
+  beatsLength: number,
+  strictRhythm: boolean,
+): number => {
+  const minAdvance = beatCursor + 1;
+  const clampedTarget = Math.min(
+    beatsLength - 1,
+    Math.max(minAdvance, Math.round(targetBeat)),
+  );
+  if (strictRhythm) {
+    return clampedTarget;
+  }
+  return pickBeatNearTarget(targetBeat, beatCursor, strengths, beatsLength);
+};
+
+const pickBeatNearTarget = (
+  targetBeat: number,
+  beatCursor: number,
+  strengths: number[],
+  beatsLength: number,
+): number => {
+  const minAdvance = beatCursor + 1;
+  const clampedTarget = Math.min(
+    beatsLength - 1,
+    Math.max(minAdvance, Math.round(targetBeat)),
+  );
+  const radius = slideBeatsRadius(clampedTarget - beatCursor);
+  const minBeat = Math.max(minAdvance, clampedTarget - radius);
+  const maxBeat = Math.min(beatsLength - 1, clampedTarget + radius);
+
+  let bestBeat = clampedTarget;
+  let bestScore = -Infinity;
+  for (let beatIndex = minBeat; beatIndex <= maxBeat; beatIndex++) {
+    const closenessPenalty = Math.abs(beatIndex - targetBeat) * 0.35;
+    const score = (strengths[beatIndex] ?? 0.4) - closenessPenalty;
+    if (score > bestScore) {
+      bestScore = score;
+      bestBeat = beatIndex;
+    }
+  }
+  return Math.max(minAdvance, bestBeat);
 };
 
 export const computeMusicSync = (params: {
@@ -120,7 +231,7 @@ export const computeMusicSync = (params: {
       slideTimings,
       transitionDuration: 0,
       slideDuration: segment,
-      totalDurationFrames: totalWithOutro(slideTimings, params.fps),
+      totalDurationFrames: totalWithOutro(slideTimings, params.fps, params.audioDurationSeconds),
       sync: {
         enabled: true,
         mode: params.bpm ? "bpm" : "duration",
@@ -166,7 +277,7 @@ export const computeMusicSync = (params: {
       slideTimings,
       transitionDuration,
       slideDuration: segment,
-      totalDurationFrames: totalWithOutro(slideTimings, params.fps),
+      totalDurationFrames: totalWithOutro(slideTimings, params.fps, params.audioDurationSeconds),
       sync: {
         enabled: true,
         mode: "bpm",
@@ -200,7 +311,7 @@ export const computeMusicSync = (params: {
     slideTimings,
     transitionDuration,
     slideDuration,
-    totalDurationFrames: totalWithOutro(slideTimings, params.fps),
+    totalDurationFrames: totalWithOutro(slideTimings, params.fps, params.audioDurationSeconds),
     sync: {
       enabled: true,
       mode: "duration",
@@ -263,7 +374,7 @@ export const computeBeatSync = (params: {
       const lastBeat = beats[beats.length - 1] ?? 0;
       return lastBeat + (beatIndex - beats.length + 1) * beatIntervalSeconds;
     };
-    const slideBeats = Math.max(4, Math.round(params.slideBeats[0] ?? 16));
+    const slideBeats = clampBeats(params.slideBeats[0] ?? 16);
     const duration = Math.max(
       1,
       Math.round(getBeatTime(slideBeats) * params.fps),
@@ -273,7 +384,7 @@ export const computeBeatSync = (params: {
       slideTimings,
       transitionDuration: 0,
       slideDuration: duration,
-      totalDurationFrames: totalWithOutro(slideTimings, params.fps),
+      totalDurationFrames: totalWithOutro(slideTimings, params.fps, params.audioDurationSeconds),
       sync: {
         enabled: true,
         mode: "beats",
@@ -301,7 +412,7 @@ export const computeBeatSync = (params: {
     return lastBeat + (beatIndex - beats.length + 1) * beatIntervalSeconds;
   };
 
-  let slideBeats = params.slideBeats.map((b) => Math.max(4, Math.round(b)));
+  let slideBeats = params.slideBeats.map(clampBeats);
   if (slideBeats.length < slideCount) {
     const fallback = Math.round(
       slideBeats.reduce((sum, b) => sum + b, 0) / Math.max(slideBeats.length, 1),
@@ -312,22 +423,7 @@ export const computeBeatSync = (params: {
   }
 
   slideBeats = slideBeats.slice(0, slideCount);
-
-  const targetBeats = Math.floor(beats.length * 0.92);
-  const rawTotal = slideBeats.reduce((sum, b) => sum + b, 0);
-
-  if (targetBeats > slideCount * 4 && rawTotal > targetBeats) {
-    const maxBeatsPerSlide = Math.max(
-      48,
-      Math.ceil(targetBeats / slideCount) + 4,
-    );
-    const scale = targetBeats / rawTotal;
-    slideBeats = slideBeats.map((b) =>
-      Math.max(4, Math.min(maxBeatsPerSlide, Math.round(b * scale))),
-    );
-  } else {
-    slideBeats = slideBeats.map((b) => Math.max(4, Math.min(48, b)));
-  }
+  slideBeats = fitSlideBeatsToBudget(slideBeats, beats.length);
 
   const cutTimes: number[] = [0];
   let beatCursor = 0;
@@ -367,7 +463,7 @@ export const computeBeatSync = (params: {
     slideTimings,
     transitionDuration,
     slideDuration: avgDuration,
-    totalDurationFrames: totalWithOutro(slideTimings, params.fps),
+    totalDurationFrames: totalWithOutro(slideTimings, params.fps, params.audioDurationSeconds),
       sync: {
         enabled: true,
         mode: "beats",
@@ -392,6 +488,7 @@ export const computeAccentSync = (params: {
   bpm: number;
   analyzer?: "essentia" | "legacy";
   confidence?: number;
+  allowedTransitions?: TransitionType[];
 }): {
   slideTimings: SlideTiming[];
   transitionDuration: number;
@@ -441,7 +538,7 @@ export const computeAccentSync = (params: {
       const lastBeat = beats[beats.length - 1] ?? 0;
       return lastBeat + (beatIndex - beats.length + 1) * beatIntervalSeconds;
     };
-    const slideBeats = Math.max(4, Math.round(params.slideBeats[0] ?? 16));
+    const slideBeats = clampBeats(params.slideBeats[0] ?? 16);
     const duration = Math.max(
       1,
       Math.round(getBeatTimeAtIndex(slideBeats) * params.fps),
@@ -451,7 +548,7 @@ export const computeAccentSync = (params: {
       slideTimings,
       transitionDuration: 0,
       slideDuration: duration,
-      totalDurationFrames: totalWithOutro(slideTimings, params.fps),
+      totalDurationFrames: totalWithOutro(slideTimings, params.fps, params.audioDurationSeconds),
       slideAccentStrengths: [strengths[0] ?? 0.4],
       slideTransitions: [undefined],
       slideTransitionDurations: [0],
@@ -478,46 +575,34 @@ export const computeAccentSync = (params: {
     Math.min(Math.round(0.45 * beatIntervalSeconds * params.fps), 24),
   );
 
-  let slideBeats = params.slideBeats.map((b) => Math.max(4, Math.round(b)));
+  let slideBeats = fitSlideBeatsToBudget(
+    params.slideBeats.map(clampBeats),
+    beats.length,
+  );
   while (slideBeats.length < slideCount) {
     slideBeats.push(slideBeats[slideBeats.length - 1] ?? 16);
   }
   slideBeats = slideBeats.slice(0, slideCount);
 
-  const targetBeats = Math.floor(beats.length * 0.92);
-  const rawTotal = slideBeats.reduce((sum, b) => sum + b, 0);
-  if (targetBeats > slideCount * 4 && rawTotal > targetBeats) {
-    const scale = targetBeats / rawTotal;
-    slideBeats = slideBeats.map((b) =>
-      Math.max(4, Math.min(48, Math.round(b * scale))),
-    );
-  }
+  const avgBeats =
+    slideBeats.reduce((sum, b) => sum + b, 0) / Math.max(slideCount, 1);
+  const tempo = getTempoProfile(Math.round(avgBeats));
 
   const cutTimes: number[] = [0];
   const cutBeatIndices: number[] = [0];
   let beatCursor = 0;
 
   for (let slideIndex = 0; slideIndex < slideCount - 1; slideIndex++) {
-    const minBeat = beatCursor + Math.max(4, slideBeats[slideIndex] - 3);
-    const maxBeat = Math.min(
-      beats.length - 1,
-      beatCursor + slideBeats[slideIndex] + 4,
+    const idealBeat = beatCursor + slideBeats[slideIndex];
+    beatCursor = pickBeatForSlide(
+      idealBeat,
+      beatCursor,
+      strengths,
+      beats.length,
+      tempo.strictRhythm,
     );
-
-    let bestBeat = Math.min(minBeat, maxBeat);
-    let bestScore = -1;
-    for (let beatIndex = minBeat; beatIndex <= maxBeat; beatIndex++) {
-      const progressBias = (beatIndex - minBeat) * 0.015;
-      const score = strengths[beatIndex] + progressBias;
-      if (score > bestScore) {
-        bestScore = score;
-        bestBeat = beatIndex;
-      }
-    }
-
-    beatCursor = bestBeat;
-    cutTimes.push(beats[bestBeat]);
-    cutBeatIndices.push(bestBeat);
+    cutTimes.push(beats[beatCursor]);
+    cutBeatIndices.push(beatCursor);
   }
 
   const getBeatTimeAtIndex = (beatIndex: number) => {
@@ -541,14 +626,32 @@ export const computeAccentSync = (params: {
     slideAccentStrengths.push(exitStrength);
 
     const framesPerBeat = Math.round(beatIntervalSeconds * params.fps);
-    const transitionDuration =
+    let transitionDuration =
       i === slideCount - 1
         ? 0
         : pickTransitionDurationForAccent(exitStrength, framesPerBeat);
+    if (i < slideCount - 1) {
+      transitionDuration = Math.max(
+        tempo.transitionMinFrames,
+        Math.min(
+          tempo.transitionMaxFrames,
+          Math.round(transitionDuration * tempo.tempoScale),
+        ),
+      );
+    }
     slideTransitionDurations.push(transitionDuration);
 
+    const transitionStrength = tempo.preferDynamicTransitions
+      ? Math.max(exitStrength, 0.68)
+      : exitStrength;
     slideTransitions.push(
-      i === 0 ? undefined : pickTransitionForAccent(enterStrength, i - 1),
+      i === 0
+        ? undefined
+        : pickTransitionForAccent(
+            transitionStrength,
+            i - 1,
+            params.allowedTransitions,
+          ),
     );
 
     const enterOverlap =
@@ -571,9 +674,7 @@ export const computeAccentSync = (params: {
     });
   }
 
-  const avgBeats = Math.round(
-    slideBeats.reduce((sum, b) => sum + b, 0) / slideCount,
-  );
+  const avgBeatsRounded = Math.round(avgBeats);
   const avgDuration = Math.round(
     slideTimings.reduce((sum, t) => sum + t.duration, 0) / slideCount,
   );
@@ -586,7 +687,7 @@ export const computeAccentSync = (params: {
     slideTimings,
     transitionDuration: avgTransition,
     slideDuration: avgDuration,
-    totalDurationFrames: totalWithOutro(slideTimings, params.fps),
+    totalDurationFrames: totalWithOutro(slideTimings, params.fps, params.audioDurationSeconds),
     slideAccentStrengths,
     slideTransitions,
     slideTransitionDurations,
@@ -595,7 +696,7 @@ export const computeAccentSync = (params: {
       mode: "beats",
       audioDurationSeconds: params.audioDurationSeconds,
       bpm: params.bpm,
-      beatsPerSlide: avgBeats,
+      beatsPerSlide: avgBeatsRounded,
       framesPerBeat: Math.round(beatIntervalSeconds * params.fps),
       beatCount: beats.length,
       beatTimesSeconds: beats,
@@ -604,7 +705,7 @@ export const computeAccentSync = (params: {
       confidence: params.confidence,
       cutTimesSeconds: cutTimes,
       animationPhases: {
-        ...buildAnimationPhases(avgBeats),
+        ...buildAnimationPhases(avgBeatsRounded),
         bangStrength: pickBangStrengthForAccent(
           slideAccentStrengths.reduce((max, s) => Math.max(max, s), 0.4),
         ),

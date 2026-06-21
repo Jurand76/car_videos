@@ -40,17 +40,22 @@ export const getSubtleDriftTransform = (
   const bangStart = Math.max(0, exitStart - totalBangFrames);
   const holdStart = transitionDuration;
   const final = getFinalDrift(slideIndex);
+  const holdWindow = Math.max(1, bangStart - holdStart);
+  const panFrames = Math.min(
+    Math.max(10, Math.round(holdWindow * 0.7)),
+    holdWindow,
+  );
+  const panEnd = holdStart + panFrames;
 
   if (frame < holdStart) {
     return { translateX: 0, translateY: 0, rotate: 0 };
   }
 
-  const panEnd = Math.max(holdStart + 1, bangStart);
   if (frame >= panEnd) {
     return final;
   }
 
-  const progress = Math.min(1, (frame - holdStart) / (panEnd - holdStart));
+  const progress = Math.min(1, (frame - holdStart) / Math.max(1, panEnd - holdStart));
 
   return {
     translateX: final.translateX * progress,

@@ -49,6 +49,7 @@ const emptyManifest = (): ProjectManifest => ({
     enabled: true,
     mode: "beats",
     beatsPerSlide: 16,
+    textEnterDelayBeats: 0,
   },
 });
 

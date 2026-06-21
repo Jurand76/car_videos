@@ -1,14 +1,16 @@
 import { spawn } from "child_process";
 import ffmpegStatic from "ffmpeg-static";
+import {
+  buildBeatStrengthsFromAccents,
+  detectAccentsFromSamples,
+  type AccentPoint,
+} from "./accentDetect";
 
 const SAMPLE_RATE = 22050;
 const HOP_SIZE = 512;
 const FRAME_SIZE = 2048;
 
-export type AccentPoint = {
-  timeSeconds: number;
-  strength: number;
-};
+export type { AccentPoint };
 
 export type BeatAnalysis = {
   bpm: number;
@@ -231,16 +233,24 @@ export const detectBeatsFromSamples = (
   if (onsetSeconds.length < 8) {
     const fallbackBpm = 120;
     const beats = buildBeatGrid(durationSeconds, fallbackBpm, onsetSeconds);
-    const beatStrengths = beats.map(() => 0.35);
+    const { accentPoints, onsetTimesSeconds } = detectAccentsFromSamples(
+      samples,
+      SAMPLE_RATE,
+      durationSeconds,
+      onsetSeconds,
+    );
+    const beatStrengths = buildBeatStrengthsFromAccents(
+      beats,
+      accentPoints,
+      samples,
+      SAMPLE_RATE,
+    );
     return {
       bpm: fallbackBpm,
       beatTimesSeconds: beats,
       beatStrengths,
-      accentPoints: beats.map((time, index) => ({
-        timeSeconds: time,
-        strength: beatStrengths[index],
-      })),
-      onsetTimesSeconds: onsetSeconds,
+      accentPoints,
+      onsetTimesSeconds,
       confidence: 0.2,
       analyzer: "legacy",
     };
@@ -249,20 +259,25 @@ export const detectBeatsFromSamples = (
   const bpm = estimateBpmFromPeaks(peaks);
   const beats = buildBeatGrid(durationSeconds, bpm, onsetSeconds);
   const confidence = scoreBeatGrid(beats, onsetSeconds, bpm);
-  const beatStrengths = beats.map((time) => {
-    const hit = onsetSeconds.some((o) => Math.abs(o - time) < 0.08);
-    return hit ? 0.65 : 0.35;
-  });
+  const { accentPoints, onsetTimesSeconds } = detectAccentsFromSamples(
+    samples,
+    SAMPLE_RATE,
+    durationSeconds,
+    onsetSeconds,
+  );
+  const beatStrengths = buildBeatStrengthsFromAccents(
+    beats,
+    accentPoints,
+    samples,
+    SAMPLE_RATE,
+  );
 
   return {
     bpm,
     beatTimesSeconds: beats,
     beatStrengths,
-    accentPoints: beats.map((time, index) => ({
-      timeSeconds: time,
-      strength: beatStrengths[index],
-    })),
-    onsetTimesSeconds: onsetSeconds,
+    accentPoints,
+    onsetTimesSeconds,
     confidence: Number(Math.min(1, confidence * 2).toFixed(2)),
     analyzer: "legacy",
   };

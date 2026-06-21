@@ -39,11 +39,11 @@ export const Slide: React.FC<SlideProps> = ({
   image,
   title,
   subtitle,
+  textEffect,
   beats,
   accentStrength,
   slideIndex,
   localBeatFrames,
-  kenBurns = true,
   enterTransition,
   exitTransition,
   holdFrames = 0,
@@ -104,16 +104,17 @@ export const Slide: React.FC<SlideProps> = ({
     zIndex = z;
   }
 
-  const textEnterFrame = useChoreography
-    ? getTextEnterFrame(
-        localBeatFrames,
-        phases.introBeats,
-        enterTransitionDuration,
-        framesPerBeat,
-      )
-    : enterTransition
-      ? enterTransitionDuration + 4
-      : 12;
+  const textEnterDelayBeats =
+    PROJECT.sync.textEnterDelayBeats ??
+    PROJECT.sync.animationPhases?.introBeats ??
+    0;
+
+  const textEnterFrame = getTextEnterFrame(
+    localBeatFrames,
+    textEnterDelayBeats,
+    enterTransitionDuration,
+    framesPerBeat,
+  );
 
   const textHideStart = Math.max(
     textEnterFrame + 8,
@@ -178,7 +179,6 @@ export const Slide: React.FC<SlideProps> = ({
   }
 
   const usePan =
-    kenBurns &&
     enterProgress >= 1 &&
     !glitchEnter &&
     !glitchExit &&
@@ -290,6 +290,7 @@ export const Slide: React.FC<SlideProps> = ({
           title={title}
           subtitle={subtitle}
           slideIndex={slideIndex}
+          textEffect={textEffect}
           localFrame={activeFrame - textEnterFrame}
           hideStartFrame={textHideStart - textEnterFrame}
           baseOpacity={textOpacity}

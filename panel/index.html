@@ -125,23 +125,17 @@
                   <span>MP3, WAV, M4A</span>
                 </label>
               </div>
-              <p id="audio-name" class="muted"></p>
+
+              <div class="audio-picker-bar" id="audio-picker">
+                <label class="audio-picker-bar-inner" for="audio-select">
+                  <span class="audio-picker-icon" aria-hidden="true">♪</span>
+                  <select id="audio-select" class="audio-picker-select" aria-label="Wybierz utwór">
+                    <option value="">Bez muzyki</option>
+                  </select>
+                </label>
+              </div>
               <p id="audio-meta" class="muted sync-meta"></p>
               <p id="beat-meta" class="muted beat-meta"></p>
-
-              <div class="toolbar">
-                <button class="btn btn-ghost" id="scan-btn" type="button">
-                  Skanuj public/
-                </button>
-                <button class="btn btn-ghost" id="clear-slides-btn" type="button">
-                  Wyczyść slajdy
-                </button>
-              </div>
-              <label class="checkbox-field assets-checkbox">
-                <input type="checkbox" id="use-all-public" />
-                <span>Przy generowaniu dodaj wszystkie obrazki z public/</span>
-              </label>
-              <p id="slide-count-hint" class="muted sync-hint"></p>
             </div>
 
             <div class="assets-sync" id="assets-sync" hidden>
@@ -161,12 +155,27 @@
                   <input type="number" id="bpm" min="60" max="200" placeholder="auto — nadpisuje detekcję" />
                 </label>
                 <label class="field">
-                  <span>Domyślnie taktów (fallback)</span>
+                  <span>Tempo slajdów (taktów)</span>
                   <select id="beats-per-slide">
-                    <option value="8">8 — szybciej</option>
+                    <option value="2">2 — bardzo szybko</option>
+                    <option value="4">4 — szybko</option>
+                    <option value="8">8 — żywo</option>
+                    <option value="12">12 — umiarkowanie</option>
                     <option value="16" selected>16 — standard</option>
                     <option value="24">24 — wolno</option>
                     <option value="32">32 — bardzo wolno</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Opóźnienie wejścia tekstu w taktach</span>
+                  <select id="text-enter-delay">
+                    <option value="0" selected>0 — od razu</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="4">4</option>
+                    <option value="6">6</option>
+                    <option value="8">8</option>
+                    <option value="10">10</option>
                   </select>
                 </label>
                 <label class="checkbox-field">
@@ -235,30 +244,60 @@
         </section>
 
         <section class="card card-wide">
-          <h2>3. Prompt AI</h2>
-          <textarea
-            id="prompt"
-            rows="5"
-            placeholder="Np. Dynamiczny reel z szybkimi cięciami, agresywne przejścia wipe i zoom, krótkie slajdy, tekst z dołu..."
-          ></textarea>
+          <div class="prompt-effects-layout">
+            <h2 class="prompt-effects-heading">3. Prompt AI i dostępne efekty</h2>
 
-          <div class="prompt-hints">
-            <button type="button" class="chip" data-prompt="Dynamiczny reel TikTok, szybkie cięcia, agresywne przejścia wipe i push">
-              Dynamiczny reel
-            </button>
-            <button type="button" class="chip" data-prompt="Spokojny cinematic slideshow, wolne slajdy, delikatne fade i blur">
-              Spokojny cinematic
-            </button>
-            <button type="button" class="chip" data-prompt="Energetyczna prezentacja auta, rotacje, zoom in, krótkie slajdy">
-              Prezentacja auta
-            </button>
-          </div>
+            <aside class="prompt-effects-side">
+              <div class="effects-group">
+                <div class="effects-group-head">
+                  <span class="effects-group-title">Efekty graficzne</span>
+                  <span id="graphic-effects-summary" class="effects-group-count">—</span>
+                </div>
+                <p id="graphic-effects-chips" class="effects-preview-chips muted"></p>
+                <button type="button" class="btn btn-secondary effects-picker-btn" id="open-graphic-effects-btn">
+                  Wybierz efekty grafiki
+                </button>
+              </div>
 
-          <div class="generate-action-block generate-flow-block">
-            <button class="btn btn-primary" id="generate-btn" type="button">
-              Generuj flow animacji
-            </button>
-            <p id="status" class="generate-action-status" aria-live="polite"></p>
+              <div class="effects-group">
+                <div class="effects-group-head">
+                  <span class="effects-group-title">Efekty tekstu</span>
+                  <span id="text-effects-summary" class="effects-group-count">—</span>
+                </div>
+                <p id="text-effects-chips" class="effects-preview-chips muted"></p>
+                <button type="button" class="btn btn-secondary effects-picker-btn" id="open-text-effects-btn">
+                  Wybierz efekty tekstu
+                </button>
+              </div>
+            </aside>
+
+            <div class="prompt-effects-main">
+              <label for="prompt" class="prompt-effects-label">Prompt AI</label>
+              <textarea
+                id="prompt"
+                rows="5"
+                placeholder="Np. Dynamiczny reel z szybkimi cięciami, agresywne przejścia wipe i zoom, krótkie slajdy, tekst z dołu..."
+              ></textarea>
+
+              <div class="prompt-hints">
+                <button type="button" class="chip" data-prompt="Dynamiczny reel TikTok, szybkie cięcia, agresywne przejścia wipe i push">
+                  Dynamiczny reel
+                </button>
+                <button type="button" class="chip" data-prompt="Spokojny cinematic slideshow, wolne slajdy, delikatne fade i blur">
+                  Spokojny cinematic
+                </button>
+                <button type="button" class="chip" data-prompt="Energetyczna prezentacja auta, rotacje, zoom in, krótkie slajdy">
+                  Prezentacja auta
+                </button>
+              </div>
+            </div>
+
+            <div class="generate-action-block generate-flow-block prompt-effects-generate">
+              <button class="btn btn-primary" id="generate-btn" type="button">
+                Generuj flow animacji
+              </button>
+              <p id="status" class="generate-action-status" aria-live="polite"></p>
+            </div>
           </div>
         </section>
 
@@ -285,6 +324,60 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-ghost" data-project-modal-close>Anuluj</button>
             <button type="button" class="btn btn-danger" id="project-delete-confirm">Usuń</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="graphic-effects-modal" class="modal" hidden aria-hidden="true">
+      <div class="modal-backdrop" data-graphic-effects-close></div>
+      <div
+        class="modal-panel modal-panel--effects"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="graphic-effects-modal-title"
+      >
+        <header class="modal-header">
+          <h3 id="graphic-effects-modal-title">Efekty graficzne</h3>
+          <button type="button" class="modal-close" data-graphic-effects-close aria-label="Zamknij">✕</button>
+        </header>
+        <div class="modal-body">
+          <p class="modal-hint">Przejścia między slajdami — używane przy generowaniu flow i synchronizacji z muzyką.</p>
+          <div class="effects-modal-toolbar">
+            <button type="button" class="btn btn-ghost btn-sm" id="graphic-effects-select-all">Zaznacz wszystkie</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="graphic-effects-select-none">Odznacz wszystkie</button>
+          </div>
+          <div id="graphic-effects-list" class="effects-checkbox-grid"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" data-graphic-effects-close>Anuluj</button>
+            <button type="button" class="btn btn-primary" id="graphic-effects-save">Zapisz wybór</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="text-effects-modal" class="modal" hidden aria-hidden="true">
+      <div class="modal-backdrop" data-text-effects-close></div>
+      <div
+        class="modal-panel modal-panel--effects"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="text-effects-modal-title"
+      >
+        <header class="modal-header">
+          <h3 id="text-effects-modal-title">Efekty tekstu</h3>
+          <button type="button" class="modal-close" data-text-effects-close aria-label="Zamknij">✕</button>
+        </header>
+        <div class="modal-body">
+          <p class="modal-hint">Animacje wejścia tytułu i podtytułu na slajdach.</p>
+          <div class="effects-modal-toolbar">
+            <button type="button" class="btn btn-ghost btn-sm" id="text-effects-select-all">Zaznacz wszystkie</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="text-effects-select-none">Odznacz wszystkie</button>
+          </div>
+          <div id="text-effects-list" class="effects-checkbox-grid"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" data-text-effects-close>Anuluj</button>
+            <button type="button" class="btn btn-primary" id="text-effects-save">Zapisz wybór</button>
           </div>
         </div>
       </div>

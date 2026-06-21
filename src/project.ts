@@ -1,7 +1,7 @@
 import projectJson from "../generated/project.json";
 import type { ProjectManifest, ProjectSlide } from "./projectTypes";
 import { DEFAULT_ANIMATION_PHASES, type AnimationPhases } from "./slideAnimation";
-import { getOutroDurationFrames } from "./sync";
+import { getLastSlideTailFrames, getOutroDurationFrames } from "./sync";
 
 const defaultSync: ProjectManifest["sync"] = {
   enabled: false,
@@ -10,6 +10,7 @@ const defaultSync: ProjectManifest["sync"] = {
   bpm: null,
   beatsPerSlide: 16,
   framesPerBeat: null,
+  textEnterDelayBeats: 0,
   animationPhases: DEFAULT_ANIMATION_PHASES,
 };
 
@@ -40,6 +41,10 @@ export const PROJECT = {
 } as ProjectManifest;
 
 export const SLIDES: ProjectSlide[] = PROJECT.slides;
+export const ALLOWED_TEXT_EFFECTS =
+  PROJECT.allowedTextEffects?.length
+    ? PROJECT.allowedTextEffects
+    : undefined;
 export const SLIDE_DURATION = PROJECT.slideDuration;
 export const TRANSITION_DURATION = PROJECT.transitionDuration;
 export const FPS = PROJECT.fps;
@@ -65,7 +70,11 @@ export const getSlideTransitionDuration = (index: number) =>
 
 export const getOutroFrames = () => getOutroDurationFrames(FPS);
 
-export const getSlidesContentEndFrame = (): number => {
+export const getLastSlideTail = () =>
+  SLIDES.length > 0 ? getLastSlideTailFrames(FPS) : 0;
+
+/** Koniec ostatniego slajdu z manifestu (bez tail/outro). */
+export const getLastSlideContentEndFrame = (): number => {
   if (PROJECT.slideTimings?.length) {
     const last = PROJECT.slideTimings[PROJECT.slideTimings.length - 1];
     return last.from + last.duration;
@@ -76,10 +85,45 @@ export const getSlidesContentEndFrame = (): number => {
   );
 };
 
-export const getTotalDuration = (slideCount: number) => {
-  if (PROJECT.totalDurationFrames) {
-    return PROJECT.totalDurationFrames;
+export type OutroRange = {
+  /** Pierwsza klatka fade-outu (po tailu ostatniego slajdu). */
+  start: number;
+  /** Ostatnia klatka kompozycji — fade i audio kończą się tutaj. */
+  end: number;
+  /** Długość fade-outu w klatkach (może być krótsza niż OUTRO przy krótkim audio). */
+  duration: number;
+};
+
+export const getOutroRange = (): OutroRange => {
+  const tailFrames = getLastSlideTail();
+  const outroFrames = getOutroFrames();
+  const contentEnd = getLastSlideContentEndFrame();
+  const idealStart = contentEnd + tailFrames;
+  const idealEnd = idealStart + outroFrames;
+
+  let end = idealEnd;
+  let start = idealStart;
+
+  if (PROJECT.sync.enabled && PROJECT.sync.audioDurationSeconds > 0) {
+    const audioEnd = Math.round(PROJECT.sync.audioDurationSeconds * FPS);
+    if (audioEnd > 0) {
+      end = Math.min(idealEnd, audioEnd);
+      if (end <= start) {
+        start = Math.max(contentEnd, end - outroFrames);
+      }
+      if (start >= end) {
+        start = Math.max(0, end - 1);
+      }
+    }
   }
+
+  const duration = Math.max(1, end - start);
+  return { start, end, duration };
+};
+
+export const getSlidesContentEndFrame = (): number => getOutroRange().start;
+
+export const getTotalDuration = (slideCount: number) => {
   if (slideCount <= 0) return 0;
-  return getSlidesContentEndFrame() + getOutroFrames();
+  return getOutroRange().end;
 };

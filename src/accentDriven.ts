@@ -32,16 +32,28 @@ const SOFT_TRANSITIONS: TransitionType[] = [
   "rotateCcw",
 ];
 
+const filterTransitionPool = (
+  pool: TransitionType[],
+  allowed?: TransitionType[],
+): TransitionType[] => {
+  if (!allowed?.length) return pool;
+  const filtered = pool.filter((t) => allowed.includes(t));
+  return filtered.length ? filtered : allowed;
+};
+
 export const pickTransitionForAccent = (
   strength: number,
   index: number,
+  allowed?: TransitionType[],
 ): TransitionType => {
-  const pool =
+  const pool = filterTransitionPool(
     strength >= 0.72
       ? STRONG_TRANSITIONS
       : strength >= 0.45
         ? MEDIUM_TRANSITIONS
-        : SOFT_TRANSITIONS;
+        : SOFT_TRANSITIONS,
+    allowed,
+  );
   return pool[index % pool.length];
 };
 

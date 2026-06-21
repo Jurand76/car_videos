@@ -29,8 +29,13 @@ export const TEXT_EFFECTS: TextEffect[] = [
   "slideLeft",
 ];
 
-export const getTextEffect = (index: number): TextEffect =>
-  TEXT_EFFECTS[index % TEXT_EFFECTS.length];
+export const getTextEffect = (
+  index: number,
+  pool: readonly TextEffect[] = TEXT_EFFECTS,
+): TextEffect => {
+  const effects = pool.length ? pool : TEXT_EFFECTS;
+  return effects[index % effects.length];
+};
 
 export const hashUnit = (seed: number) => {
   const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
@@ -61,12 +66,12 @@ export const getEnterProgress = (
 
   const duration =
     effect === "boomIn" || effect === "popIn" || effect === "stampIn"
-      ? Math.round(fps * 0.55)
+      ? Math.round(fps * 0.3)
       : effect === "elasticIn"
-        ? Math.round(fps * 0.75)
+        ? Math.round(fps * 0.42)
       : effect === "mosaicIn" || effect === "shatterIn"
-        ? Math.round(fps * 0.85)
-        : Math.round(fps * 0.65);
+        ? Math.round(fps * 0.45)
+        : Math.round(fps * 0.35);
 
   const t = Math.min(1, localFrame / Math.max(1, duration));
   return Easing.out(Easing.cubic)(t);

@@ -1,10 +1,11 @@
 import fs from "fs";
 import path from "path";
 import type { ProjectManifest, ProjectSlide } from "../src/projectTypes";
-import { TRANSITION_TYPES, type TransitionType } from "../src/transitions";
+import { applySlideMontage, hashStringSeed } from "../src/effectMontage";
+import { TRANSITION_TYPES } from "../src/transitions";
 import { getAiStatus, type AiProvider } from "./env";
 import { applyMusicSync, type GenerateInput, resolveBaseBeats } from "./syncProject";
-import { assignVariedBeats } from "../src/sync";
+import { clampBeats, getTempoProfile, resolveSlideBeats } from "../src/sync";
 import { inferLocationFromPath, assignInfoChunksToSlides } from "./slideMatching";
 import { formatMagazineCopy, MAGAZINE_STYLE_PROMPT } from "./magazineCopy";
 
@@ -12,63 +13,36 @@ export type { GenerateInput } from "./syncProject";
 
 const ROOT = path.join(__dirname, "..");
 
-const ENERGETIC: TransitionType[] = [
-  "flash",
-  "glitch",
-  "mosaic",
-  "tilesIn",
-  "shatter",
-  "shockwave",
-  "strobeCut",
-  "tilesRadial",
-  "zoomSpin",
-  "rgbSplit",
-  "spinIn",
-  "pixelate",
-  "kaleidFlip",
-  "stripsHorizontal",
-  "stripsVertical",
-  "wipeLeft",
-  "pushLeft",
-  "zoomIn",
-  "flip",
-];
+const withEffectPreferences = (
+  manifest: ProjectManifest,
+  input: GenerateInput,
+): ProjectManifest => ({
+  ...manifest,
+  allowedTransitions: input.allowedTransitions?.length
+    ? input.allowedTransitions
+    : undefined,
+  allowedTextEffects: input.allowedTextEffects?.length
+    ? input.allowedTextEffects
+    : undefined,
+});
 
-const CALM: TransitionType[] = [
-  "fade",
-  "zoomOut",
-  "blur",
-  "slideUp",
-  "wipeUp",
-  "rotateCcw",
-];
-
-const pickPool = (prompt: string): TransitionType[] => {
-  const p = prompt.toLowerCase();
-  if (
-    /szybk|dynamicz|energet|reel|tiktok|fast|aggressive|hard/.test(p)
-  ) {
-    return ENERGETIC;
+const pickTiming = (prompt: string, beatsPerSlide = 16) => {
+  const tempo = getTempoProfile(beatsPerSlide);
+  if (tempo.strictRhythm) {
+    return { slideDuration: 36, transitionDuration: 5, kenBurns: false };
   }
-  if (/spokoj|wolno|slow|cinematic|delikat|soft|smooth/.test(p)) {
-    return CALM;
+  if (beatsPerSlide <= 8) {
+    return { slideDuration: 52, transitionDuration: 8, kenBurns: false };
   }
-  return TRANSITION_TYPES;
-};
-
-const pickTiming = (prompt: string) => {
   const p = prompt.toLowerCase();
-  if (/szybk|dynamicz|reel|tiktok|fast/.test(p)) {
-    return { slideDuration: 60, transitionDuration: 14, kenBurns: false };
+  if (/szybk|dynamicz|reel|tiktok|fast|masakr|flash|glitch|shockwave/.test(p)) {
+    return { slideDuration: 60, transitionDuration: 12, kenBurns: false };
   }
   if (/spokoj|wolno|slow|cinematic/.test(p)) {
-    return { slideDuration: 120, transitionDuration: 28, kenBurns: true };
+    return { slideDuration: 120, transitionDuration: 24, kenBurns: true };
   }
-  return { slideDuration: 90, transitionDuration: 20, kenBurns: true };
+  return { slideDuration: 90, transitionDuration: 18, kenBurns: tempo.kenBurns };
 };
-
-const clampBeats = (value: number) =>
-  Math.max(4, Math.min(48, Math.round(value)));
 
 const parseInfoTextChunks = (text: string): { title: string; subtitle?: string }[] => {
   const lines = text
@@ -172,18 +146,14 @@ const mergeLlmSlidesForFlow = (
       ...input,
       location: input.location ?? inferLocationFromPath(input.image),
       transition: fromLlm?.transition,
-      beats:
-        fromLlm?.beats != null && fromLlm.beats > 0
-          ? clampBeats(fromLlm.beats)
-          : input.beats,
     };
   });
 
 export const generateHeuristic = (input: GenerateInput): ProjectManifest => {
-  const pool = pickPool(input.prompt);
-  const timing = pickTiming(input.prompt);
   const baseBeats = resolveBaseBeats(input);
-  const beatPattern = assignVariedBeats(input.slides.length, baseBeats);
+  const tempo = getTempoProfile(baseBeats);
+  const slideBeatPattern = resolveSlideBeats(input.slides, baseBeats);
+  const timing = pickTiming(input.prompt, baseBeats);
   const contentSlides = input.preserveSlideCopy
     ? input.slides
     : applyContentFromText(input);
@@ -191,9 +161,7 @@ export const generateHeuristic = (input: GenerateInput): ProjectManifest => {
   const slides = contentSlides.map((slide, index) => {
     const base = {
       ...slide,
-      transition:
-        index === 0 ? undefined : pool[(index - 1) % pool.length],
-      beats: beatPattern[index],
+      beats: slideBeatPattern[index],
     };
     if (input.contentMode === "fromText" && !input.preserveSlideCopy) {
       return formatMagazineCopy(base);
@@ -201,22 +169,26 @@ export const generateHeuristic = (input: GenerateInput): ProjectManifest => {
     return base;
   });
 
-  return {
-    version: 1,
-    prompt: input.prompt,
-    contentMode: input.contentMode ?? "manual",
-    infoText:
-      input.contentMode === "fromText" ? input.infoText?.trim() : undefined,
-    generatedAt: new Date().toISOString(),
-    generatedBy: "heuristic",
-    fps: 30,
-    width: 1280,
-    height: 720,
-    ...timing,
-    audio: input.audio,
-    audioVolume: 0.85,
-    slides,
-  };
+  return withEffectPreferences(
+    {
+      version: 1,
+      prompt: input.prompt,
+      contentMode: input.contentMode ?? "manual",
+      infoText:
+        input.contentMode === "fromText" ? input.infoText?.trim() : undefined,
+      generatedAt: new Date().toISOString(),
+      generatedBy: "heuristic",
+      fps: 30,
+      width: 1280,
+      height: 720,
+      ...timing,
+      kenBurns: tempo.kenBurns,
+      audio: input.audio,
+      audioVolume: 0.85,
+      slides,
+    },
+    input,
+  );
 };
 
 const SYSTEM_PROMPT = `Jesteś reżyserem wideo Remotion. Zwracasz WYŁĄCZNIE poprawny JSON (bez markdown) zgodny ze schematem:
@@ -232,11 +204,11 @@ Preferuj efekty WOW (flash, glitch, mosaic, tilesIn, shatter, shockwave) przy dy
 Pierwszy slajd NIE ma transition.
 
 WAŻNE — rytm slajdów:
-- Każdy slajd ma pole "beats" (4-48): ile taktów trwa TEN slajd.
-- ZRÓŻNICUJ beats między slajdami — unikaj jednolitej wartości dla wszystkich.
-- Krótsze slajdy (8-12) przy dynamicznych momentach, dropach, mocnych tekstach.
-- Dłuższe (20-32) przy spokojniejszych, cinematic, ważnych slajdach.
-- Średnia beats powinna pasować do promptu (szybki reel ~8-16, spokojny ~20-32).
+- W payloadzie jest beatsPerSlide — bazowe tempo wybrane przez użytkownika.
+- Przy beatsPerSlide <= 4: krótkie slajdy (2–4 takty), szybkie cięcia, mocne przejścia.
+- Przy beatsPerSlide >= 16: dłuższe slajdy (12–32 takty), spokojniejszy rytm.
+- ZRÓŻNICUJ beats między slajdami wokół beatsPerSlide (nie wszystkie identyczne).
+- Średnia beats slajdów powinna być bliska beatsPerSlide z payloadu.
 
 Dopasuj tempo, efekty i rytm do promptu użytkownika.
 Zwróć DOKŁADNIE tyle slajdów, ile obrazków dostałeś — nie pomijaj żadnego.
@@ -257,7 +229,9 @@ TRYB fromText (payload: infoText + slides[] z polami image, location, sceneLabel
 const FLOW_ONLY_PROMPT = `
 TRYB flow-only (slides[] mają już title/subtitle):
 - NIE zmieniaj title ani subtitle — zwróć je identycznie jak w payloadzie.
-- Ustaw tylko transition, beats oraz pola globalne (slideDuration, transitionDuration, kenBurns, audioVolume).`;
+- NIE ustawiaj beats — taktowanie slajdów ustawia użytkownik (beatsPerSlide w payloadzie).
+- NIE ustawiaj transition — przejścia przypisze silnik montażu (losowo z puli użytkownika).
+- Ustaw tylko pola globalne (slideDuration, transitionDuration, kenBurns, audioVolume).`;
 
 const DESCRIPTIONS_SYSTEM_PROMPT = `Jesteś copywriterem motoryzacyjnym. Zwracasz WYŁĄCZNIE poprawny JSON (bez markdown):
 {
@@ -276,13 +250,21 @@ type LlmConfig = {
 };
 
 const buildSystemPrompt = (input: GenerateInput) => {
+  const allowed = input.allowedTransitions?.length
+    ? input.allowedTransitions
+    : TRANSITION_TYPES;
+  const transitionList = allowed.join(", ");
+  const base = SYSTEM_PROMPT.replace(
+    /Dozwolone transition \(oprócz pierwszego slajdu\): [^.]+\./,
+    `Dozwolone transition (oprócz pierwszego slajdu): ${transitionList}.`,
+  );
   if (input.preserveSlideCopy) {
-    return `${SYSTEM_PROMPT}\n${FLOW_ONLY_PROMPT}`;
+    return `${base}\n${FLOW_ONLY_PROMPT}`;
   }
   if (input.contentMode === "fromText" && input.infoText?.trim()) {
-    return `${SYSTEM_PROMPT}\n${CONTENT_FROM_TEXT_PROMPT}`;
+    return `${base}\n${CONTENT_FROM_TEXT_PROMPT}`;
   }
-  return SYSTEM_PROMPT;
+  return base;
 };
 
 const buildDescriptionsUserPayload = (input: GenerateInput) =>
@@ -292,10 +274,12 @@ const buildDescriptionsUserPayload = (input: GenerateInput) =>
   });
 
 const buildUserPayload = (input: GenerateInput) => {
+  const baseBeats = resolveBaseBeats(input);
   const base = {
     prompt: input.prompt,
     audio: input.audio,
     contentMode: input.contentMode ?? "manual",
+    beatsPerSlide: baseBeats,
   };
 
   if (input.contentMode === "fromText" && input.infoText?.trim()) {
@@ -328,49 +312,46 @@ const parseLlmResponse = (
   const merged = input.preserveSlideCopy
     ? mergeLlmSlidesForFlow(input.slides, parsed.slides)
     : mergeLlmSlides(input.slides, parsed.slides);
+  const baseBeats = resolveBaseBeats(input);
+  const tempo = getTempoProfile(baseBeats);
+  const slideBeatPattern = resolveSlideBeats(input.slides, baseBeats);
   const slides = merged.map((slide, index) => ({
     ...slide,
     transition: index === 0 ? undefined : slide.transition,
-    beats:
-      slide.beats != null && slide.beats > 0
-        ? clampBeats(slide.beats)
-        : slide.beats,
+    beats: slideBeatPattern[index],
   }));
 
-  const baseBeats = resolveBaseBeats(input);
-  const beatPattern = assignVariedBeats(input.slides.length, baseBeats);
-  const slidesWithBeats = slides.map((slide, index) => {
-    const withBeats = {
-      ...slide,
-      beats: slide.beats ?? beatPattern[index],
-    };
+  const slidesWithBeats = slides.map((slide) => {
     if (input.preserveSlideCopy) {
-      return withBeats;
+      return slide;
     }
     return {
-      ...formatMagazineCopy(withBeats),
-      beats: withBeats.beats,
+      ...formatMagazineCopy(slide),
+      beats: slide.beats,
     };
   });
 
-  return {
-    version: 1,
-    prompt: input.prompt,
-    contentMode: input.contentMode ?? "manual",
-    infoText:
-      input.contentMode === "fromText" ? input.infoText?.trim() : undefined,
-    generatedAt: new Date().toISOString(),
-    generatedBy: provider,
-    fps: 30,
-    width: 1280,
-    height: 720,
-    slideDuration: parsed.slideDuration,
-    transitionDuration: parsed.transitionDuration,
-    kenBurns: parsed.kenBurns,
-    audio: input.audio,
-    audioVolume: parsed.audioVolume ?? 0.85,
-    slides: slidesWithBeats,
-  };
+  return withEffectPreferences(
+    {
+      version: 1,
+      prompt: input.prompt,
+      contentMode: input.contentMode ?? "manual",
+      infoText:
+        input.contentMode === "fromText" ? input.infoText?.trim() : undefined,
+      generatedAt: new Date().toISOString(),
+      generatedBy: provider,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      slideDuration: parsed.slideDuration,
+      transitionDuration: parsed.transitionDuration,
+      kenBurns: tempo.kenBurns,
+      audio: input.audio,
+      audioVolume: parsed.audioVolume ?? 0.85,
+      slides: slidesWithBeats,
+    },
+    input,
+  );
 };
 
 const parseDescriptionsResponse = (
@@ -496,7 +477,21 @@ export const generateProject = async (
     }
   }
 
-  return applyMusicSync(manifest, flowInput, ROOT);
+  const synced = await applyMusicSync(manifest, flowInput, ROOT);
+  const montageSeed = hashStringSeed(
+    `${input.prompt}|${synced.slides.map((s) => s.image).join("|")}|${synced.generatedAt}|${Date.now()}`,
+  );
+
+  return {
+    ...synced,
+    slides: applySlideMontage(synced.slides, input.prompt, {
+      allowedTransitions:
+        synced.allowedTransitions ?? input.allowedTransitions,
+      allowedTextEffects:
+        synced.allowedTextEffects ?? input.allowedTextEffects,
+      seed: montageSeed,
+    }),
+  };
 };
 
 export const writeProject = (

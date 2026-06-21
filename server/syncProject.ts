@@ -1,13 +1,19 @@
 import type { ProjectManifest } from "../src/projectTypes";
+import type { TransitionType } from "../src/transitions";
+import type { TextEffect } from "../src/effects/textEffects";
 import {
-  assignVariedBeats,
   computeAccentSync,
   computeMusicSync,
+  getLastSlideTailFrames,
   getOutroDurationFrames,
+  getTempoProfile,
   guessBeatsPerSlide,
+  resolveSlideBeats,
 } from "../src/sync";
 import { analyzeAudioFromPublic } from "./analyzeAudio";
 import { getAudioMetaFromPublic } from "./audio";
+import { clampTextEnterDelayBeats } from "../src/slideAnimation";
+import type { MusicSyncInfo } from "../src/sync";
 
 export type SyncMode = "beats" | "bpm" | "duration";
 
@@ -22,20 +28,29 @@ export type GenerateInput = {
   audio: string | null;
   bpm?: number | null;
   beatsPerSlide?: number;
+  textEnterDelayBeats?: number;
   audioDurationSeconds?: number | null;
   syncToMusic?: boolean;
   syncMode?: SyncMode;
   /** Flow animacji — nie nadpisuj title/subtitle/sceneLabel. */
   preserveSlideCopy?: boolean;
+  allowedTransitions?: TransitionType[];
+  allowedTextEffects?: TextEffect[];
 };
-
-const resolveSlideBeats = (
-  slides: ProjectManifest["slides"],
-  defaultBeats: number,
-): number[] => assignVariedBeats(slides.length, defaultBeats);
 
 export const resolveBaseBeats = (input: GenerateInput): number =>
   input.beatsPerSlide ?? guessBeatsPerSlide(input.prompt);
+
+const withTextEnterDelay = (
+  sync: MusicSyncInfo,
+  input: GenerateInput,
+  manifest: ProjectManifest,
+): MusicSyncInfo => ({
+  ...sync,
+  textEnterDelayBeats: clampTextEnterDelayBeats(
+    input.textEnterDelayBeats ?? manifest.sync?.textEnterDelayBeats ?? 0,
+  ),
+});
 
 export const applyMusicSync = async (
   manifest: ProjectManifest,
@@ -45,26 +60,33 @@ export const applyMusicSync = async (
   if (!input.audio || input.syncToMusic === false) {
     return {
       ...manifest,
-      sync: {
-        enabled: false,
-        mode: "duration",
-        audioDurationSeconds: 0,
-        bpm: null,
-        beatsPerSlide: input.beatsPerSlide ?? 4,
-        framesPerBeat: null,
-      },
+      sync: withTextEnterDelay(
+        {
+          enabled: false,
+          mode: "duration",
+          audioDurationSeconds: 0,
+          bpm: null,
+          beatsPerSlide: input.beatsPerSlide ?? 4,
+          framesPerBeat: null,
+        },
+        input,
+        manifest,
+      ),
       totalDurationFrames:
         manifest.totalDurationFrames ??
         ((manifest.slides.length > 0
           ? (manifest.slides.length - 1) *
               (manifest.slideDuration - manifest.transitionDuration) +
             manifest.slideDuration
-          : 0) + getOutroDurationFrames(manifest.fps)),
+          : 0) +
+          getLastSlideTailFrames(manifest.fps) +
+          getOutroDurationFrames(manifest.fps)),
     };
   }
 
   const syncMode: SyncMode = input.syncMode ?? "beats";
   const defaultBeats = resolveBaseBeats(input);
+  const tempo = getTempoProfile(defaultBeats);
   const slideBeats = resolveSlideBeats(manifest.slides, defaultBeats);
 
   let audioDurationSeconds = input.audioDurationSeconds ?? null;
@@ -95,10 +117,13 @@ export const applyMusicSync = async (
         bpm: input.bpm ?? analysis.bpm,
         analyzer: analysis.analyzer,
         confidence: analysis.confidence,
+        allowedTransitions:
+          manifest.allowedTransitions ?? input.allowedTransitions,
       });
 
       return {
         ...manifest,
+        kenBurns: tempo.kenBurns,
         slides: manifest.slides.map((slide, index) => ({
           ...slide,
           beats: slideBeats[index],
@@ -112,10 +137,14 @@ export const applyMusicSync = async (
         transitionDuration: syncResult.transitionDuration,
         slideTimings: syncResult.slideTimings,
         totalDurationFrames: syncResult.totalDurationFrames,
-        sync: {
-          ...syncResult.sync,
-          slideTransitionDurations: syncResult.slideTransitionDurations,
-        },
+        sync: withTextEnterDelay(
+          {
+            ...syncResult.sync,
+            slideTransitionDurations: syncResult.slideTransitionDurations,
+          },
+          input,
+          manifest,
+        ),
       };
     } catch (error) {
       console.warn(
@@ -138,6 +167,7 @@ export const applyMusicSync = async (
 
   return {
     ...manifest,
+    kenBurns: tempo.kenBurns,
     slides: manifest.slides.map((slide, index) => ({
       ...slide,
       beats: slideBeats[index],
@@ -146,6 +176,6 @@ export const applyMusicSync = async (
     transitionDuration: syncResult.transitionDuration,
     slideTimings: syncResult.slideTimings,
     totalDurationFrames: syncResult.totalDurationFrames,
-    sync: syncResult.sync,
+    sync: withTextEnterDelay(syncResult.sync, input, manifest),
   };
 };

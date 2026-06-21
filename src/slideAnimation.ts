@@ -19,13 +19,27 @@ export type AnimationPhases = {
 };
 
 export const DEFAULT_ANIMATION_PHASES: AnimationPhases = {
-  introBeats: 4,
+  introBeats: 0,
   exitBang: true,
   bangStrength: 0.14,
 };
 
-export const buildAnimationPhases = (beatsPerSlide: number): AnimationPhases => ({
-  introBeats: Math.max(2, Math.min(8, Math.floor(beatsPerSlide * 0.35))),
+export const TEXT_ENTER_DELAY_OPTIONS = [0, 1, 2, 4, 6, 8, 10] as const;
+
+export type TextEnterDelayBeats = (typeof TEXT_ENTER_DELAY_OPTIONS)[number];
+
+export const clampTextEnterDelayBeats = (value: number): TextEnterDelayBeats => {
+  const rounded = Math.round(value);
+  if (TEXT_ENTER_DELAY_OPTIONS.includes(rounded as TextEnterDelayBeats)) {
+    return rounded as TextEnterDelayBeats;
+  }
+  return TEXT_ENTER_DELAY_OPTIONS.reduce((best, option) =>
+    Math.abs(option - rounded) < Math.abs(best - rounded) ? option : best,
+  );
+};
+
+export const buildAnimationPhases = (_beatsPerSlide: number): AnimationPhases => ({
+  introBeats: 0,
   exitBang: true,
   bangStrength: 0.14,
 });
@@ -94,14 +108,16 @@ export const getExitBangScale = (
 
 export const getTextEnterFrame = (
   localBeats: number[],
-  introBeats: number,
+  delayBeats: number,
   transitionDuration: number,
   framesPerBeat: number,
 ): number => {
-  if (localBeats.length > introBeats) {
-    return localBeats[introBeats];
+  const delay = clampTextEnterDelayBeats(delayBeats);
+  if (delay <= 0) return 0;
+  if (localBeats.length > delay) {
+    return localBeats[delay];
   }
-  return transitionDuration + introBeats * framesPerBeat;
+  return transitionDuration + delay * framesPerBeat;
 };
 
 export const getTextEntranceOffset = (

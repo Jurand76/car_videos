@@ -6,7 +6,7 @@ import multer from "multer";
 import path from "path";
 import { getAiStatus, loadProjectEnv } from "./env";
 import { analyzeAudioFile } from "./analyzeAudio";
-import { getAudioMeta } from "./audio";
+import { getAudioMeta, listAudioTracks } from "./audio";
 import {
   generateProject,
   generateSlideDescriptions,
@@ -260,6 +260,17 @@ app.get("/api/assets", (_req, res) => {
   res.json({ assets: listAssets() });
 });
 
+app.get("/api/audio", async (_req, res) => {
+  try {
+    const tracks = await listAudioTracks(PUBLIC_DIR);
+    res.json({ tracks });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Nie udało się wczytać biblioteki audio.",
+    });
+  }
+});
+
 app.post("/api/upload/images", upload.array("images", 30), (req, res) => {
   const files = req.files;
   if (!files || !Array.isArray(files) || files.length === 0) {
@@ -451,10 +462,13 @@ app.post("/api/generate", requireVideoAuthApi, async (req, res) => {
       audio,
       bpm,
       beatsPerSlide,
+      textEnterDelayBeats,
       audioDurationSeconds,
       syncToMusic,
       syncMode,
       useAllPublicImages,
+      allowedTransitions,
+      allowedTextEffects,
     } = req.body as GenerateInput & { projectId?: string };
 
     if (!projectId) {
@@ -500,9 +514,12 @@ app.post("/api/generate", requireVideoAuthApi, async (req, res) => {
       audio: audio ?? null,
       bpm: bpm ?? null,
       beatsPerSlide: beatsPerSlide ?? undefined,
+      textEnterDelayBeats: textEnterDelayBeats ?? undefined,
       audioDurationSeconds: audioDurationSeconds ?? null,
       syncToMusic: syncToMusic ?? true,
       syncMode: syncMode ?? "beats",
+      allowedTransitions: allowedTransitions ?? undefined,
+      allowedTextEffects: allowedTextEffects ?? undefined,
     });
 
     writeProject(manifest, PROJECT_PATH);
@@ -517,8 +534,8 @@ app.post("/api/generate", requireVideoAuthApi, async (req, res) => {
       slidesRemoved: removed,
       message:
         added > 0 || removed > 0
-          ? `Projekt zapisany (${manifest.slides.length} slajdów, +${added}${removed > 0 ? `, usunięto ${removed} brakujących` : ""}). Odśwież Remotion Studio.`
-          : "Projekt zapisany. Odśwież Remotion Studio (http://localhost:3000), żeby zobaczyć podgląd.",
+          ? `Projekt zapisany (${manifest.slides.length} slajdów, +${added}${removed > 0 ? `, usunięto ${removed} brakujących` : ""}). Remotion Studio przeładuje podgląd po zapisie project.json.`
+          : "Projekt zapisany — Remotion Studio powinno przeładować podgląd. Jeśli timing się nie zmienił, odśwież kartę Studio (F5).",
     });
   } catch (error) {
     res.status(500).json({

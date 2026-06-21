@@ -1,4 +1,5 @@
 import type { TransitionType } from "./transitions";
+import type { TextEffect } from "./effects/textEffects";
 import type { MusicSyncInfo, SlideTiming } from "./sync";
 
 export type SlideLocation = "exterior" | "interior" | "detail" | "other";
@@ -12,6 +13,8 @@ export type ProjectSlide = {
   /** Co przedstawia zdjęcie, np. „fotel kierowcy”, „bagażnik”. */
   sceneLabel?: string;
   transition?: TransitionType;
+  /** Animacja wejścia tekstu — przypisywana przy generowaniu flow. */
+  textEffect?: TextEffect;
   /** Ile taktów trwa ten slajd (zmienny rytm). */
   beats?: number;
   /** Siła akcentu przy wyjściu (0–1) — zoom i przejście. */
@@ -42,4 +45,8 @@ export type ProjectManifest = {
   sync: MusicSyncInfo;
   slideTimings?: SlideTiming[];
   totalDurationFrames?: number;
+  /** Dozwolone przejścia slajdów — brak = wszystkie. */
+  allowedTransitions?: TransitionType[];
+  /** Dozwolone animacje tekstu — brak = wszystkie. */
+  allowedTextEffects?: TextEffect[];
 };

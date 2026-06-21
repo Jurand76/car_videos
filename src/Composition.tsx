@@ -2,11 +2,11 @@ import { AbsoluteFill, Audio, Sequence, interpolate, staticFile, useCurrentFrame
 import { Slide } from "./Slide";
 import {
   FPS,
-  getOutroFrames,
+  getLastSlideTail,
+  getOutroRange,
   getSlideSequenceDuration,
   getSlideStart,
   getSlideTransitionDuration,
-  getSlidesContentEndFrame,
   getTotalDuration,
   PROJECT,
   SLIDES,
@@ -17,45 +17,36 @@ import { getTransitionBetween } from "./transitions";
 export const MyComposition = () => {
   const frame = useCurrentFrame();
   const beatTimes = PROJECT.sync.beatTimesSeconds ?? [];
-  const outroFrames = getOutroFrames();
-  const outroStart = getSlidesContentEndFrame();
-  const totalFrames = getTotalDuration(SLIDES.length);
+  const { start: outroStart, end: outroEnd, duration: outroDuration } =
+    getOutroRange();
 
-  const fadeOut = interpolate(frame, [outroStart, totalFrames], [0, 1], {
+  const outroProgress = interpolate(frame, [outroStart, outroEnd], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
 
-  const audioVolume = (f: number) => {
-    const base = PROJECT.audioVolume;
-    if (f < outroStart) return base;
-    return interpolate(f, [outroStart, totalFrames], [base, 0], {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-    });
-  };
+  const audioVolume = PROJECT.audioVolume * (1 - outroProgress);
 
   return (
     <AbsoluteFill className="bg-black">
       {PROJECT.audio ? (
-        <Audio
-          src={staticFile(PROJECT.audio)}
-          volume={audioVolume}
-        />
+        <Audio src={staticFile(PROJECT.audio)} volume={audioVolume} />
       ) : null}
 
       {SLIDES.map((slide, index) => {
         const slideStart = getSlideStart(index);
         const contentDuration = getSlideSequenceDuration(index);
         const isLast = index === SLIDES.length - 1;
+        const tailFrames = isLast ? getLastSlideTail() : 0;
+        const holdFrames = isLast ? outroDuration : 0;
         const slideDuration = isLast
-          ? contentDuration + outroFrames
+          ? contentDuration + tailFrames + holdFrames
           : contentDuration;
         const localBeatFrames = getLocalBeatFrames(
           beatTimes,
           FPS,
           slideStart,
-          contentDuration,
+          contentDuration + tailFrames,
         );
 
         const enterTransition =
@@ -73,7 +64,7 @@ export const MyComposition = () => {
 
         return (
           <Sequence
-            key={`${slide.image}-${index}`}
+            key={`${slide.image}-${index}-${contentDuration}-${slide.beats ?? 0}`}
             from={slideStart}
             durationInFrames={slideDuration}
             premountFor={premountFor}
@@ -85,7 +76,7 @@ export const MyComposition = () => {
               kenBurns={PROJECT.kenBurns}
               enterTransition={enterTransition}
               exitTransition={exitTransition}
-              holdFrames={isLast ? outroFrames : 0}
+              holdFrames={holdFrames}
             />
           </Sequence>
         );
@@ -94,7 +85,7 @@ export const MyComposition = () => {
       <AbsoluteFill
         style={{
           backgroundColor: "#000",
-          opacity: fadeOut,
+          opacity: outroProgress,
           zIndex: 9999,
           pointerEvents: "none",
         }}

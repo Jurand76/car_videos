@@ -17,13 +17,377 @@ let activeProjectId = null;
 let videoProjects = [];
 /** @type {{ id: string, name: string } | null} */
 let deleteProjectTarget = null;
+/** @type {{ path: string, filename: string, title: string | null, displayTitle: string, durationSeconds: number, bpm: number | null }[]} */
+let availableAudioTracks = [];
+/** @type {boolean} */
+let audioAnalysisPending = false;
 /** @type {Record<string, unknown> | null} */
 let persistedManifestMeta = null;
+
+const ALL_GRAPHIC_EFFECTS = [
+  "flash", "glitch", "mosaic", "tilesIn", "shatter", "shockwave", "strobeCut",
+  "tilesRadial", "zoomSpin", "rgbSplit", "spinIn", "pixelate", "kaleidFlip",
+  "stripsHorizontal", "stripsVertical", "wipeLeft", "pushLeft", "zoomIn", "flip",
+  "slideLeft", "rotateCw", "blur", "squeeze", "slideRight", "zoomOut", "wipeRight",
+  "slideUp", "pushRight", "fade", "slideDown", "wipeUp", "rotateCcw", "wipeDown",
+];
+
+const ALL_TEXT_EFFECTS = [
+  "boomIn", "mosaicIn", "shatterIn", "glitchIn", "popIn", "waveIn", "stampIn",
+  "elasticIn", "slideUp", "scaleIn", "blurIn", "slideLeft",
+];
+
+const GRAPHIC_EFFECT_LABELS = {
+  flash: "Błysk",
+  glitch: "Glitch",
+  mosaic: "Mozaika",
+  tilesIn: "Kafelki",
+  shatter: "Rozbicie",
+  shockwave: "Fala uderzeniowa",
+  strobeCut: "Stroboskop",
+  tilesRadial: "Kafelki radialne",
+  zoomSpin: "Zoom + obrót",
+  rgbSplit: "Rozszczep RGB",
+  spinIn: "Wjazd obrotowy",
+  pixelate: "Pikselizacja",
+  kaleidFlip: "Kalejdoskop",
+  stripsHorizontal: "Pasy poziome",
+  stripsVertical: "Pasy pionowe",
+  wipeLeft: "Zasłona w lewo",
+  pushLeft: "Przesunięcie w lewo",
+  zoomIn: "Przybliżenie",
+  flip: "Przerzucenie",
+  slideLeft: "Slajd w lewo",
+  rotateCw: "Obrót zgodnie z zegarem",
+  blur: "Rozmycie",
+  squeeze: "Ściskanie",
+  slideRight: "Slajd w prawo",
+  zoomOut: "Oddalenie",
+  wipeRight: "Zasłona w prawo",
+  slideUp: "Slajd w górę",
+  pushRight: "Przesunięcie w prawo",
+  fade: "Przenikanie",
+  slideDown: "Slajd w dół",
+  wipeUp: "Zasłona w górę",
+  rotateCcw: "Obrót przeciwnie",
+  wipeDown: "Zasłona w dół",
+};
+
+const TEXT_EFFECT_LABELS = {
+  boomIn: "Wybuch",
+  mosaicIn: "Mozaika",
+  shatterIn: "Rozbicie",
+  glitchIn: "Glitch",
+  popIn: "Pop",
+  waveIn: "Fala",
+  stampIn: "Stempel",
+  elasticIn: "Elastyczny",
+  slideUp: "Wjazd w górę",
+  scaleIn: "Powiększenie",
+  blurIn: "Rozmycie",
+  slideLeft: "Wjazd z lewej",
+};
+
+/** @type {Set<string>} */
+let selectedGraphicEffects = new Set(ALL_GRAPHIC_EFFECTS);
+/** @type {Set<string>} */
+let selectedTextEffects = new Set(ALL_TEXT_EFFECTS);
+/** @type {Set<string> | null} */
+let graphicEffectsDraft = null;
+/** @type {Set<string> | null} */
+let textEffectsDraft = null;
+
+const getEffectLabel = (id, kind) =>
+  kind === "graphic"
+    ? GRAPHIC_EFFECT_LABELS[id] ?? id
+    : TEXT_EFFECT_LABELS[id] ?? id;
+
+const getSelectedGraphicEffects = () => [...selectedGraphicEffects];
+const getSelectedTextEffects = () => [...selectedTextEffects];
+
+const setSelectedGraphicEffects = (ids) => {
+  selectedGraphicEffects = new Set(
+    ids.filter((id) => ALL_GRAPHIC_EFFECTS.includes(id)),
+  );
+  if (!selectedGraphicEffects.size) {
+    selectedGraphicEffects = new Set(ALL_GRAPHIC_EFFECTS);
+  }
+};
+
+const setSelectedTextEffects = (ids) => {
+  selectedTextEffects = new Set(
+    ids.filter((id) => ALL_TEXT_EFFECTS.includes(id)),
+  );
+  if (!selectedTextEffects.size) {
+    selectedTextEffects = new Set(ALL_TEXT_EFFECTS);
+  }
+};
+
+const formatEffectsPreview = (ids, kind, max = 4) => {
+  if (!ids.length) return "Brak wybranych efektów";
+  const labels = ids.map((id) => getEffectLabel(id, kind));
+  if (labels.length <= max) return labels.join(" · ");
+  const shown = labels.slice(0, max).join(" · ");
+  return `${shown} · +${labels.length - max}`;
+};
+
+const updateEffectsSummary = () => {
+  const graphicIds = getSelectedGraphicEffects();
+  const textIds = getSelectedTextEffects();
+  const graphicSummary = $("graphic-effects-summary");
+  const textSummary = $("text-effects-summary");
+  const graphicChips = $("graphic-effects-chips");
+  const textChips = $("text-effects-chips");
+
+  if (graphicSummary) {
+    graphicSummary.textContent = `${graphicIds.length} / ${ALL_GRAPHIC_EFFECTS.length}`;
+  }
+  if (textSummary) {
+    textSummary.textContent = `${textIds.length} / ${ALL_TEXT_EFFECTS.length}`;
+  }
+  if (graphicChips) {
+    graphicChips.textContent = formatEffectsPreview(graphicIds, "graphic");
+  }
+  if (textChips) {
+    textChips.textContent = formatEffectsPreview(textIds, "text");
+  }
+};
+
+const renderEffectsCheckboxGrid = (containerId, allEffects, draft, kind) => {
+  const container = $(containerId);
+  if (!container) return;
+  container.innerHTML = allEffects
+    .map((id) => {
+      const checked = draft.has(id) ? "checked" : "";
+      const label = getEffectLabel(id, kind);
+      return `
+        <label class="effect-check">
+          <input type="checkbox" value="${id}" ${checked} />
+          <span>${label}</span>
+        </label>
+      `;
+    })
+    .join("");
+};
+
+const readEffectsDraftFromGrid = (containerId) => {
+  const container = $(containerId);
+  if (!container) return new Set();
+  const ids = [...container.querySelectorAll('input[type="checkbox"]:checked')].map(
+    (input) => input.value,
+  );
+  return new Set(ids);
+};
+
+const openGraphicEffectsModal = () => {
+  graphicEffectsDraft = new Set(selectedGraphicEffects);
+  renderEffectsCheckboxGrid(
+    "graphic-effects-list",
+    ALL_GRAPHIC_EFFECTS,
+    graphicEffectsDraft,
+    "graphic",
+  );
+  const modal = $("graphic-effects-modal");
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+};
+
+const closeGraphicEffectsModal = () => {
+  graphicEffectsDraft = null;
+  const modal = $("graphic-effects-modal");
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+};
+
+const openTextEffectsModal = () => {
+  textEffectsDraft = new Set(selectedTextEffects);
+  renderEffectsCheckboxGrid(
+    "text-effects-list",
+    ALL_TEXT_EFFECTS,
+    textEffectsDraft,
+    "text",
+  );
+  const modal = $("text-effects-modal");
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+};
+
+const closeTextEffectsModal = () => {
+  textEffectsDraft = null;
+  const modal = $("text-effects-modal");
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+};
+
+const saveGraphicEffectsDraft = () => {
+  const draft = readEffectsDraftFromGrid("graphic-effects-list");
+  if (!draft.size) {
+    setStatus("Wybierz co najmniej jeden efekt graficzny.", "err");
+    return;
+  }
+  selectedGraphicEffects = draft;
+  updateEffectsSummary();
+  closeGraphicEffectsModal();
+};
+
+const saveTextEffectsDraft = () => {
+  const draft = readEffectsDraftFromGrid("text-effects-list");
+  if (!draft.size) {
+    setStatus("Wybierz co najmniej jeden efekt tekstu.", "err");
+    return;
+  }
+  selectedTextEffects = draft;
+  updateEffectsSummary();
+  closeTextEffectsModal();
+};
+
+const resetEffectsSelection = () => {
+  selectedGraphicEffects = new Set(ALL_GRAPHIC_EFFECTS);
+  selectedTextEffects = new Set(ALL_TEXT_EFFECTS);
+  updateEffectsSummary();
+};
+
+const applyEffectsFromManifest = (project) => {
+  if (project?.allowedTransitions?.length) {
+    setSelectedGraphicEffects(project.allowedTransitions);
+  } else {
+    selectedGraphicEffects = new Set(ALL_GRAPHIC_EFFECTS);
+  }
+  if (project?.allowedTextEffects?.length) {
+    setSelectedTextEffects(project.allowedTextEffects);
+  } else {
+    selectedTextEffects = new Set(ALL_TEXT_EFFECTS);
+  }
+  updateEffectsSummary();
+};
 
 const formatDuration = (seconds) => {
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
+};
+
+const prettifyAudioFilename = (filename) => {
+  const base = String(filename).replace(/\.[^.]+$/, "");
+  const cleaned = base.replace(/^\d+-/, "");
+  const pretty = cleaned.replace(/[-_]/g, " ").trim();
+  return pretty || filename;
+};
+
+const getAudioDisplayTitle = (path) => {
+  const track = availableAudioTracks.find((item) => item.path === path);
+  if (track) {
+    return track.displayTitle || track.title || prettifyAudioFilename(track.filename);
+  }
+  if (!path) return "";
+  return prettifyAudioFilename(path.split("/").pop() ?? path);
+};
+
+const renderAudioSelect = () => {
+  const select = $("audio-select");
+  if (!select) return;
+  const current = audioPath ?? "";
+  select.innerHTML = '<option value="">Bez muzyki</option>';
+  for (const track of availableAudioTracks) {
+    const option = document.createElement("option");
+    option.value = track.path;
+    let label = track.displayTitle || prettifyAudioFilename(track.filename);
+    if (track.durationSeconds > 0) {
+      label += ` (${formatDuration(track.durationSeconds)})`;
+    }
+    option.textContent = label;
+    select.appendChild(option);
+  }
+  if (current && !availableAudioTracks.some((item) => item.path === current)) {
+    const option = document.createElement("option");
+    option.value = current;
+    option.textContent = getAudioDisplayTitle(current);
+    select.appendChild(option);
+  }
+  select.value = current;
+};
+
+const loadAudioLibrary = async () => {
+  try {
+    const res = await fetch("/api/audio");
+    if (!res.ok) return;
+    const data = await res.json();
+    availableAudioTracks = data.tracks ?? [];
+    renderAudioSelect();
+  } catch {
+    // biblioteka opcjonalna przy starcie
+  }
+};
+
+const setAudioAnalysisPending = (pending) => {
+  audioAnalysisPending = pending;
+  const select = $("audio-select");
+  if (select) select.disabled = pending;
+  $("audio-picker")?.classList.toggle("audio-picker--analyzing", pending);
+  updateAudioMeta();
+};
+
+const applyAudioTrack = async (path, { analyze = true, silent = false } = {}) => {
+  if (!path) {
+    audioPath = null;
+    audioDurationSeconds = null;
+    detectedBpm = null;
+    beatAnalysis = null;
+    renderAudioSelect();
+    updateAudioMeta();
+    return;
+  }
+
+  const track = availableAudioTracks.find((item) => item.path === path);
+  audioPath = path;
+  audioDurationSeconds = track?.durationSeconds || null;
+  detectedBpm = track?.bpm || null;
+  beatAnalysis = null;
+  renderAudioSelect();
+
+  if (!analyze) {
+    updateAudioMeta();
+    return;
+  }
+
+  setAudioAnalysisPending(true);
+  if (!silent) setStatus("Analizuję beaty...");
+  try {
+    const res = await fetch("/api/analyze-audio", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Analiza nieudana");
+    audioDurationSeconds = data.durationSeconds || audioDurationSeconds;
+    detectedBpm = data.bpm || detectedBpm;
+    beatAnalysis = {
+      bpm: data.bpm,
+      beatCount: data.beatCount,
+      accentCount: data.accentCount,
+      confidence: data.confidence,
+      analyzer: data.analyzer,
+    };
+    if (!$("bpm").value) {
+      $("bpm").placeholder = `wykryto ${data.bpm} BPM`;
+    }
+    if (!silent) {
+      setStatus(
+        `Analiza (${data.analyzer === "essentia" ? "Essentia" : "legacy"}): ${data.bpm} BPM, ${data.beatCount} beatów.`,
+        "ok",
+      );
+    }
+  } catch (error) {
+    if (!silent) {
+      setStatus(
+        error instanceof Error ? error.message : "Nie udało się przeanalizować audio.",
+        "error",
+      );
+    }
+  } finally {
+    setAudioAnalysisPending(false);
+  }
 };
 
 const updateSyncPanelVisibility = () => {
@@ -56,7 +420,11 @@ const updateAudioMeta = () => {
   }
   meta.textContent = parts.join(" · ");
 
-  if (beatAnalysis) {
+  beatMeta.classList.toggle("beat-meta--loading", audioAnalysisPending);
+
+  if (audioAnalysisPending) {
+    beatMeta.textContent = "Trwa detekcja beatów (Essentia)…";
+  } else if (beatAnalysis) {
     const analyzer =
       beatAnalysis.analyzer === "essentia" ? "Essentia" : "legacy";
     const accents =
@@ -65,7 +433,7 @@ const updateAudioMeta = () => {
         : "";
     beatMeta.textContent = `Detekcja (${analyzer}): ~${beatAnalysis.bpm} BPM · ${beatAnalysis.beatCount} beatów${accents} · pewność ${Math.round(beatAnalysis.confidence * 100)}%`;
   } else if ($("sync-mode")?.value === "beats") {
-    beatMeta.textContent = "Detekcja beatów przy generowaniu (lub wrzuć plik ponownie)";
+    beatMeta.textContent = "Wybierz utwór z listy lub wrzuć plik MP3";
   } else {
     beatMeta.textContent = "";
   }
@@ -225,6 +593,9 @@ const createVideoProject = async () => {
   await openProject(data.project.id);
 };
 
+const getTextEnterDelayBeats = () =>
+  Number($("text-enter-delay")?.value ?? 0);
+
 const buildManifestFromEditor = () => ({
   version: 1,
   prompt: $("prompt").value.trim(),
@@ -241,7 +612,9 @@ const buildManifestFromEditor = () => ({
   audio: audioPath,
   audioVolume: persistedManifestMeta?.audioVolume ?? 0.7,
   slides,
-  useAllPublicImages: $("use-all-public").checked,
+  useAllPublicImages: false,
+  allowedTransitions: getSelectedGraphicEffects(),
+  allowedTextEffects: getSelectedTextEffects(),
   slideTimings: persistedManifestMeta?.slideTimings,
   totalDurationFrames: persistedManifestMeta?.totalDurationFrames,
   sync: {
@@ -249,6 +622,7 @@ const buildManifestFromEditor = () => ({
     enabled: $("sync-to-music").checked,
     mode: $("sync-mode").value,
     beatsPerSlide: Number($("beats-per-slide").value) || 16,
+    textEnterDelayBeats: getTextEnterDelayBeats(),
     bpm: $("bpm").value.trim()
       ? Number($("bpm").value)
       : (detectedBpm ?? beatAnalysis?.bpm ?? persistedManifestMeta?.sync?.bpm ?? null),
@@ -327,9 +701,9 @@ const resetEditorState = () => {
   audioDurationSeconds = null;
   detectedBpm = null;
   beatAnalysis = null;
+  audioAnalysisPending = false;
   $("prompt").value = "";
   $("info-text").value = "";
-  $("audio-name").textContent = "";
   $("audio-meta").textContent = "";
   $("beat-meta").textContent = "";
   $("manifest-preview").textContent = "";
@@ -337,12 +711,15 @@ const resetEditorState = () => {
   $("sync-to-music").checked = true;
   $("sync-mode").value = "beats";
   $("beats-per-slide").value = "16";
-  $("use-all-public").checked = false;
+  $("text-enter-delay").value = "0";
   setContentMode("manual");
+  $("audio-select")?.removeAttribute("disabled");
+  $("audio-picker")?.classList.remove("audio-picker--analyzing");
+  renderAudioSelect();
   updateAudioMeta();
   renderSlides();
-  updateSlideCountHint();
   setSlidesSectionExpanded(false);
+  resetEffectsSelection();
 };
 
 const applyManifestToEditor = (project) => {
@@ -355,17 +732,14 @@ const applyManifestToEditor = (project) => {
   audioPath = project.audio ?? null;
   audioDurationSeconds = project.sync?.audioDurationSeconds ?? null;
   detectedBpm = project.sync?.bpm ?? null;
-  if (audioPath) {
-    $("audio-name").textContent = `Audio: ${audioPath}`;
-  }
   $("beats-per-slide").value = String(project.sync?.beatsPerSlide ?? 16);
+  $("text-enter-delay").value = String(project.sync?.textEnterDelayBeats ?? 0);
   if (project.sync?.mode) {
     $("sync-mode").value = project.sync.mode;
   }
   if (project.sync?.bpm) {
     $("bpm").value = String(project.sync.bpm);
   }
-  $("use-all-public").checked = project.useAllPublicImages === true;
   if (project.sync?.beatCount && project.sync?.bpm) {
     beatAnalysis = {
       bpm: project.sync.bpm,
@@ -374,9 +748,10 @@ const applyManifestToEditor = (project) => {
     };
   }
   $("sync-to-music").checked = project.sync?.enabled !== false;
+  applyEffectsFromManifest(project);
+  renderAudioSelect();
   updateAudioMeta();
   renderSlides();
-  updateSlideCountHint();
   $("manifest-preview").textContent = JSON.stringify(project, null, 2);
 };
 
@@ -397,6 +772,7 @@ const openProject = async (projectId, options = {}) => {
   updateSaveProjectButton();
   setSaveProjectStatus("");
 
+  await loadAudioLibrary();
   const res = await fetch(`/api/project?projectId=${encodeURIComponent(projectId)}`);
   if (res.ok) {
     applyManifestToEditor(await res.json());
@@ -580,6 +956,17 @@ const moveSlide = (fromIndex, toIndex) => {
   renderSlides();
 };
 
+const removeSlide = (index) => {
+  if (index < 0 || index >= slides.length) return;
+  if (editingSlideIndex === index) {
+    closeSlideModal();
+  } else if (editingSlideIndex != null && editingSlideIndex > index) {
+    editingSlideIndex -= 1;
+  }
+  slides.splice(index, 1);
+  renderSlides();
+};
+
 const getLocationLabel = (location) =>
   locationOptions.find((option) => option.value === location)?.label ?? "Inne";
 
@@ -732,7 +1119,6 @@ const renderSlideModal = () => {
     slides.splice(index, 1);
     closeSlideModal();
     renderSlides();
-    updateSlideCountHint();
   });
 
   body.querySelectorAll("[data-modal-close]").forEach((btn) => {
@@ -780,20 +1166,31 @@ const renderSlides = () => {
           <span class="slide-tile-photo">
             <img src="${publicAssetUrl(slide.image)}" alt="" loading="lazy" decoding="async" draggable="false" />
             <span class="slide-tile-index">#${index + 1}</span>
-            <span class="slide-tile-badge${needsScene ? " warn" : ""}">${escapeHtml(getLocationLabel(location))}</span>
           </span>
           <span class="slide-tile-caption">
             <span class="slide-tile-title">${escapeHtml(caption)}</span>
             <span class="slide-tile-meta">${escapeHtml(getSlideMetaLine(slide))}</span>
           </span>
         </button>
-        <button
-          type="button"
-          class="slide-tile-drag"
-          draggable="true"
-          title="Przeciągnij, żeby zmienić kolejność"
-          aria-label="Zmień kolejność slajdu ${index + 1}"
-        >⠿</button>
+        <div class="slide-tile-photo-overlay">
+          <div class="slide-tile-photo-left">
+            <span class="slide-tile-badge${needsScene ? " warn" : ""}">${escapeHtml(getLocationLabel(location))}</span>
+            <button
+              type="button"
+              class="slide-tile-drag"
+              draggable="true"
+              title="Przeciągnij, żeby zmienić kolejność"
+              aria-label="Zmień kolejność slajdu ${index + 1}"
+            >⠿</button>
+          </div>
+          <button
+            type="button"
+            class="slide-tile-delete"
+            data-delete-slide="${index}"
+            title="Usuń slajd"
+            aria-label="Usuń slajd ${index + 1}"
+          >✕</button>
+        </div>
       </div>
     `;
     })
@@ -865,6 +1262,14 @@ const attachSlideReorder = (list) => {
       if (!Number.isNaN(index)) openSlideModal(index);
     });
   });
+
+  list.querySelectorAll("[data-delete-slide]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const index = Number(btn.getAttribute("data-delete-slide"));
+      if (!Number.isNaN(index)) removeSlide(index);
+    });
+  });
 };
 
 const escapeHtml = (value) =>
@@ -889,32 +1294,7 @@ const addSlidesFromPaths = (paths, defaultLocation) => {
     added++;
   }
   renderSlides();
-  updateSlideCountHint();
   return added;
-};
-
-const sortSlidePaths = (paths) =>
-  [...paths].sort((a, b) =>
-    a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
-  );
-
-const syncAllPublicImages = async () => {
-  const res = await fetch("/api/assets");
-  const data = await res.json();
-  const images = sortSlidePaths(
-    data.assets.filter((asset) => /\.(jpg|jpeg|png|webp|gif)$/i.test(asset)),
-  );
-  return addSlidesFromPaths(images);
-};
-
-const updateSlideCountHint = () => {
-  const hint = $("slide-count-hint");
-  if (!hint) return;
-  if (!slides.length) {
-    hint.textContent = "";
-    return;
-  }
-  hint.textContent = `${slides.length} slajdów w kolejce — generowanie tworzy flow tylko z tej listy.`;
 };
 
 const uploadImages = async (files, location = "") => {
@@ -945,36 +1325,34 @@ const uploadAudio = async (file) => {
   const form = new FormData();
   form.append("audio", file);
 
+  setAudioAnalysisPending(true);
   setStatus("Wgrywam i analizuję beaty...");
-  const res = await fetch("/api/upload/audio", { method: "POST", body: form });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Upload failed");
+  try {
+    const res = await fetch("/api/upload/audio", { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Upload failed");
 
-  audioPath = data.audio.path;
-  audioDurationSeconds = data.audio.durationSeconds || null;
-  detectedBpm = data.audio.bpm || null;
-  beatAnalysis = data.audio.beatAnalysis || null;
-  if (beatAnalysis && !$("bpm").value) {
-    $("bpm").placeholder = `wykryto ${beatAnalysis.bpm} BPM`;
-  }
-  $("audio-name").textContent = `Wybrano: ${data.audio.filename}`;
-  updateAudioMeta();
+    audioPath = data.audio.path;
+    audioDurationSeconds = data.audio.durationSeconds || null;
+    detectedBpm = data.audio.bpm || null;
+    beatAnalysis = data.audio.beatAnalysis || null;
+    if (beatAnalysis && !$("bpm").value) {
+      $("bpm").placeholder = `wykryto ${beatAnalysis.bpm} BPM`;
+    }
+    await loadAudioLibrary();
+    renderAudioSelect();
     setStatus(
-    beatAnalysis
-      ? `Analiza (${beatAnalysis.analyzer === "essentia" ? "Essentia" : "legacy"}): ${beatAnalysis.bpm} BPM, ${beatAnalysis.beatCount} beatów, ${beatAnalysis.accentCount ?? "?"} akcentów.`
-      : "Muzyka gotowa (detekcja beatów przy generowaniu).",
-    "ok",
-  );
-};
-
-const scanPublicAssets = async () => {
-  const added = await syncAllPublicImages();
-  setStatus(
-    added > 0
-      ? `Dodano ${added} obrazków z public/ (razem ${slides.length}).`
-      : `W public/ jest ${slides.length} obrazków — wszystkie już na liście.`,
-    "ok",
-  );
+      beatAnalysis
+        ? `Analiza (${beatAnalysis.analyzer === "essentia" ? "Essentia" : "legacy"}): ${beatAnalysis.bpm} BPM, ${beatAnalysis.beatCount} beatów, ${beatAnalysis.accentCount ?? "?"} akcentów.`
+        : "Muzyka gotowa (detekcja beatów przy generowaniu).",
+      "ok",
+    );
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Upload nieudany.", "error");
+    throw error;
+  } finally {
+    setAudioAnalysisPending(false);
+  }
 };
 
 const loadProject = async () => {
@@ -1074,25 +1452,13 @@ const generateDescriptions = async () => {
   const btn = $("generate-descriptions-btn");
   if (btn) btn.disabled = true;
 
-  let addedFromPublic = 0;
   if (!slides.length) {
-    if ($("use-all-public").checked) {
-      addedFromPublic = await syncAllPublicImages();
-    }
-    if (!slides.length) {
-      setDescriptionsStatus("Brak obrazków w public/. Wrzuć pliki do public/ lub uploads/.", "err");
-      if (btn) btn.disabled = false;
-      return;
-    }
-  } else if ($("use-all-public").checked) {
-    addedFromPublic = await syncAllPublicImages();
+    setDescriptionsStatus("Dodaj zdjęcia slajdów przed generowaniem opisów.", "err");
+    if (btn) btn.disabled = false;
+    return;
   }
 
-  setDescriptionsStatus(
-    addedFromPublic > 0
-      ? `Dodano ${addedFromPublic} obrazków — generuję opisy slajdów...`
-      : "Generuję opisy slajdów...",
-  );
+  setDescriptionsStatus("Generuję opisy slajdów...");
 
   try {
     const res = await fetch("/api/generate-descriptions", {
@@ -1102,7 +1468,7 @@ const generateDescriptions = async () => {
         projectId: activeProjectId,
         infoText,
         slides,
-        useAllPublicImages: $("use-all-public").checked,
+        useAllPublicImages: false,
       }),
     });
     const data = await res.json();
@@ -1128,7 +1494,6 @@ const generateDescriptions = async () => {
       }
     }
     renderSlides();
-    updateSlideCountHint();
     setDescriptionsStatus(data.message ?? "Opisy slajdów wygenerowane.", "ok");
   } catch (error) {
     setDescriptionsStatus(error instanceof Error ? error.message : "Błąd", "err");
@@ -1154,25 +1519,13 @@ const generate = async () => {
 
   $("generate-btn").disabled = true;
 
-  let addedFromPublic = 0;
   if (!slides.length) {
-    if ($("use-all-public").checked) {
-      addedFromPublic = await syncAllPublicImages();
-    }
-    if (!slides.length) {
-      setStatus("Brak obrazków w public/. Wrzuć pliki do public/ lub uploads/.", "err");
-      $("generate-btn").disabled = false;
-      return;
-    }
-  } else if ($("use-all-public").checked) {
-    addedFromPublic = await syncAllPublicImages();
+    setStatus("Dodaj zdjęcia slajdów przed generowaniem.", "err");
+    $("generate-btn").disabled = false;
+    return;
   }
 
-  setStatus(
-    addedFromPublic > 0
-      ? `Dodano ${addedFromPublic} obrazków — generuję flow animacji...`
-      : "Generuję flow animacji...",
-  );
+  setStatus("Generuję flow animacji...");
 
   try {
     const bpmValue = $("bpm").value.trim();
@@ -1188,10 +1541,13 @@ const generate = async () => {
         audio: audioPath,
         bpm: bpmValue ? Number(bpmValue) : null,
         beatsPerSlide: Number($("beats-per-slide").value),
+        textEnterDelayBeats: getTextEnterDelayBeats(),
         audioDurationSeconds,
         syncToMusic: $("sync-to-music").checked,
         syncMode: $("sync-mode").value,
-        useAllPublicImages: $("use-all-public").checked,
+        useAllPublicImages: false,
+        allowedTransitions: getSelectedGraphicEffects(),
+        allowedTextEffects: getSelectedTextEffects(),
       }),
     });
     const data = await res.json();
@@ -1200,8 +1556,8 @@ const generate = async () => {
     $("manifest-preview").textContent = JSON.stringify(data.project, null, 2);
     persistedManifestMeta = data.project;
     slides = data.project.slides ?? slides;
+    applyEffectsFromManifest(data.project);
     renderSlides();
-    updateSlideCountHint();
     if (data.project) {
       videoProjects = videoProjects.map((item) =>
         item.id === activeProjectId
@@ -1253,7 +1609,6 @@ const setupDropzone = (elementId, inputId, onFiles) => {
   const zone = $(elementId);
   const input = $(inputId);
 
-  zone.addEventListener("click", () => input.click());
   zone.addEventListener("dragover", (e) => {
     e.preventDefault();
     zone.classList.add("dragover");
@@ -1304,15 +1659,14 @@ setupDropzone("audio-drop", "audio-input", (files) => {
   return uploadAudio(audio);
 });
 
+$("audio-select")?.addEventListener("change", async (event) => {
+  const path = event.target.value || null;
+  if (path === audioPath) return;
+  await applyAudioTrack(path);
+});
+
 $("generate-btn").addEventListener("click", generate);
 $("generate-descriptions-btn")?.addEventListener("click", generateDescriptions);
-$("scan-btn").addEventListener("click", scanPublicAssets);
-$("clear-slides-btn").addEventListener("click", () => {
-  slides = [];
-  renderSlides();
-  updateSlideCountHint();
-  setSlidesSectionExpanded(false);
-});
 
 $("slides-section-toggle")?.addEventListener("click", () => {
   const toggle = $("slides-section-toggle");
@@ -1336,9 +1690,65 @@ document.querySelectorAll("[data-modal-close]").forEach((el) => {
   el.addEventListener("click", closeSlideModal);
 });
 
+$("open-graphic-effects-btn")?.addEventListener("click", openGraphicEffectsModal);
+$("open-text-effects-btn")?.addEventListener("click", openTextEffectsModal);
+$("graphic-effects-save")?.addEventListener("click", saveGraphicEffectsDraft);
+$("text-effects-save")?.addEventListener("click", saveTextEffectsDraft);
+$("graphic-effects-select-all")?.addEventListener("click", () => {
+  graphicEffectsDraft = new Set(ALL_GRAPHIC_EFFECTS);
+  renderEffectsCheckboxGrid(
+    "graphic-effects-list",
+    ALL_GRAPHIC_EFFECTS,
+    graphicEffectsDraft,
+    "graphic",
+  );
+});
+$("graphic-effects-select-none")?.addEventListener("click", () => {
+  graphicEffectsDraft = new Set();
+  renderEffectsCheckboxGrid(
+    "graphic-effects-list",
+    ALL_GRAPHIC_EFFECTS,
+    graphicEffectsDraft,
+    "graphic",
+  );
+});
+$("text-effects-select-all")?.addEventListener("click", () => {
+  textEffectsDraft = new Set(ALL_TEXT_EFFECTS);
+  renderEffectsCheckboxGrid(
+    "text-effects-list",
+    ALL_TEXT_EFFECTS,
+    textEffectsDraft,
+    "text",
+  );
+});
+$("text-effects-select-none")?.addEventListener("click", () => {
+  textEffectsDraft = new Set();
+  renderEffectsCheckboxGrid(
+    "text-effects-list",
+    ALL_TEXT_EFFECTS,
+    textEffectsDraft,
+    "text",
+  );
+});
+document.querySelectorAll("[data-graphic-effects-close]").forEach((el) => {
+  el.addEventListener("click", closeGraphicEffectsModal);
+});
+document.querySelectorAll("[data-text-effects-close]").forEach((el) => {
+  el.addEventListener("click", closeTextEffectsModal);
+});
+
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && editingSlideIndex != null) {
+  if (e.key !== "Escape") return;
+  if (editingSlideIndex != null) {
     closeSlideModal();
+    return;
+  }
+  if (!$("graphic-effects-modal")?.hidden) {
+    closeGraphicEffectsModal();
+    return;
+  }
+  if (!$("text-effects-modal")?.hidden) {
+    closeTextEffectsModal();
   }
 });
 
@@ -1410,8 +1820,10 @@ document.querySelectorAll("[data-project-modal-close]").forEach((el) => {
 });
 
 const initPanel = async () => {
+  updateEffectsSummary();
   await loadHealth();
   await loadSessionUser();
+  await loadAudioLibrary();
   updateSyncPanelVisibility();
   try {
     await loadVideoProjects();
