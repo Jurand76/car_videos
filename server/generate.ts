@@ -415,6 +415,28 @@ const getLlmConfig = (): LlmConfig | null => {
       };
 };
 
+const getAlternateLlmConfig = (
+  failedProvider: Exclude<AiProvider, "heuristic">,
+): LlmConfig | null => {
+  if (failedProvider === "openai" && process.env.DEEPSEEK_API_KEY) {
+    return {
+      provider: "deepseek",
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      baseUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com",
+      model: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
+    };
+  }
+  if (failedProvider === "deepseek" && process.env.OPENAI_API_KEY) {
+    return {
+      provider: "openai",
+      apiKey: process.env.OPENAI_API_KEY,
+      baseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com",
+      model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+    };
+  }
+  return null;
+};
+
 export const generateSlideDescriptions = async (
   input: GenerateInput,
 ): Promise<ProjectSlide[]> => {
@@ -471,8 +493,28 @@ export const generateProject = async (
     } else {
       try {
         manifest = await generateWithLlm(flowInput, config);
-      } catch {
-        manifest = generateHeuristic(flowInput);
+      } catch (primaryError) {
+        const alternate = getAlternateLlmConfig(config.provider);
+        if (!alternate) {
+          throw primaryError;
+        }
+        console.warn(
+          "Primary LLM failed, trying alternate provider:",
+          primaryError instanceof Error ? primaryError.message : primaryError,
+        );
+        try {
+          manifest = await generateWithLlm(flowInput, alternate);
+        } catch (alternateError) {
+          const primaryMessage =
+            primaryError instanceof Error ? primaryError.message : String(primaryError);
+          const alternateMessage =
+            alternateError instanceof Error
+              ? alternateError.message
+              : String(alternateError);
+          throw new Error(
+            `AI niedostępne (${config.provider}: ${primaryMessage}; ${alternate.provider}: ${alternateMessage})`,
+          );
+        }
       }
     }
   }
