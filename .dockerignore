@@ -1,0 +1,14 @@
+node_modules
+photos/web/node_modules
+photos/web/.next
+photos/api/**/__pycache__
+build
+.git
+.gitignore
+generated/video-users
+generated/exports
+out
+.env
+project.env
+*.md
+probe-err*.txt

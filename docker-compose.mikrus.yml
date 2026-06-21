@@ -1,0 +1,129 @@
+# Mikrus VPS — bob133.mikrus.xyz
+# Web:  https://bob133-20133.wykr.es  (:20133 → web:3000)
+# API:  https://bob133-30133.wykr.es  (:30133 → api:8000)
+# Wideo: https://bob133-20133.wykr.es/video (Next → gateway:4000)
+#
+# Uruchomienie:
+#   docker compose -f docker-compose.mikrus.yml --env-file project.env up -d --build
+
+name: car_photos
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-carphotos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Ustaw POSTGRES_PASSWORD w project.env}
+      POSTGRES_DB: ${POSTGRES_DB:-carphotos}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-carphotos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  api:
+    build:
+      context: ./photos/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "30133:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-carphotos}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-carphotos}
+      JWT_SECRET: ${JWT_SECRET:?Ustaw JWT_SECRET w project.env}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-10080}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Ustaw CORS_ORIGINS w project.env}
+      UPLOAD_DIR: /app/storage/uploads
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+      REMBG_MODEL: ${REMBG_MODEL:-isnet-general-use}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_ADMIN_API_KEY: ${OPENAI_ADMIN_API_KEY:-}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-gpt-image-2}
+      OPENAI_IMAGE_QUALITY: ${OPENAI_IMAGE_QUALITY:-high}
+      OPENAI_IMAGE_SIZE: ${OPENAI_IMAGE_SIZE:-auto}
+      SERIES_PARALLEL_WORKERS: ${SERIES_PARALLEL_WORKERS:-3}
+      OMP_NUM_THREADS: "1"
+      ORT_NUM_THREADS: "1"
+    volumes:
+      - api_storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\"",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+    networks:
+      - internal
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    restart: unless-stopped
+    env_file:
+      - project.env
+    environment:
+      PORT: 4000
+      PHOTOS_WEB_URL: ${WEB_URL:?Ustaw WEB_URL w project.env}
+      PHOTOS_API_URL: http://api:8000
+      HUB_URL: ${WEB_URL}/hub
+      CORS_ORIGINS: ${CORS_ORIGINS:?Ustaw CORS_ORIGINS w project.env}
+    volumes:
+      - gateway_generated:/app/generated
+      - gateway_public:/app/public
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      - internal
+
+  web:
+    build:
+      context: ./photos/web
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: ${API_URL:?Ustaw API_URL w project.env}
+        NEXT_PUBLIC_GATEWAY_URL: http://gateway:4000
+    restart: unless-stopped
+    ports:
+      - "20133:3000"
+    environment:
+      NEXTAUTH_URL: ${WEB_URL:?Ustaw WEB_URL w project.env}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Ustaw NEXTAUTH_SECRET w project.env}
+      API_URL: http://api:8000
+      NEXT_PUBLIC_GATEWAY_URL: http://gateway:4000
+    depends_on:
+      api:
+        condition: service_started
+      gateway:
+        condition: service_started
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+    external: true
+    name: car_photos_postgres_data
+  api_storage:
+    external: true
+    name: car_photos_api_storage
+  gateway_generated:
+  gateway_public:
+
+networks:
+  internal:
+    name: car_photos_internal
