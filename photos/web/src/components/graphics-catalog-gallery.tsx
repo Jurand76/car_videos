@@ -79,6 +79,12 @@ function downloadName(file: GeneratedFile, index: number, kind: "single" | "seri
   return `${slug || "seria"}-${category}-${index + 1}.png`;
 }
 
+function sortByNewest(files: GeneratedFile[]): GeneratedFile[] {
+  return [...files].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+}
+
 function buildSeriesCatalogs(files: GeneratedFile[]): SeriesCatalog[] {
   const byProject = new Map<string, GeneratedFile[]>();
 
@@ -91,19 +97,13 @@ function buildSeriesCatalogs(files: GeneratedFile[]): SeriesCatalog[] {
 
   return [...byProject.entries()]
     .map(([projectId, items]) => {
-      const sorted = [...items].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-      );
-      const latestAt = sorted.reduce(
-        (latest, item) => (item.created_at > latest ? item.created_at : latest),
-        sorted[0].created_at,
-      );
+      const sorted = sortByNewest(items);
       return {
         kind: "series" as const,
         id: projectId,
         title: sorted[0]?.project_name ?? "Bez nazwy",
         items: sorted,
-        latestAt,
+        latestAt: sorted[0]?.created_at ?? new Date(0).toISOString(),
         coverFile: sorted[0],
       };
     })
@@ -112,24 +112,17 @@ function buildSeriesCatalogs(files: GeneratedFile[]): SeriesCatalog[] {
 }
 
 function buildSingleCatalog(files: GeneratedFile[]): SingleCatalog | null {
-  const items = [...files]
-    .filter((f) => f.project_type === "advanced")
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const items = sortByNewest(files.filter((f) => f.project_type === "advanced"));
 
   if (items.length === 0) return null;
-
-  const latestAt = items.reduce(
-    (latest, item) => (item.created_at > latest ? item.created_at : latest),
-    items[0].created_at,
-  );
 
   return {
     kind: "single",
     id: "single",
     title: SINGLE_CATALOG_TITLE,
     items,
-    latestAt,
-    coverFile: items[items.length - 1],
+    latestAt: items[0].created_at,
+    coverFile: items[0],
   };
 }
 
