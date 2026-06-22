@@ -53,7 +53,7 @@ AI_SIZE_PRESETS = frozenset(
 
 
 class AiImageConfig(BaseModel):
-    quality: Literal["auto", "low", "medium", "high"] = "high"
+    quality: Literal["auto", "low", "medium", "high"] = "low"
     size: str = "auto"
     output_format: Literal["png", "jpeg", "webp"] = "png"
     output_compression: int = Field(default=100, ge=0, le=100)

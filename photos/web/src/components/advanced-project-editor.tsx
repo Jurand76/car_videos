@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AiParametersPanel } from "@/components/ai-parameters-panel";
 import { AiRenderProgress } from "@/components/ai-render-progress";
+import { BackgroundProductPicker } from "@/components/background-product-picker";
 import { FileDropzone } from "@/components/file-dropzone";
 import { GenerationCostBanner } from "@/components/generation-cost-banner";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,11 @@ import {
   getAiRenderProgress,
 } from "@/lib/ai-render-progress";
 import { captureBillingBefore, reportGenerationCost } from "@/lib/openai-generation-cost";
+import {
+  backgroundIdFromPath,
+  backgroundThumbUrl,
+  useSavedBackgrounds,
+} from "@/lib/saved-backgrounds";
 
 const DEFAULT_PROMPT =
   "Umieść samochód z pierwszego zdjęcia realistycznie na platformie studyjnej z drugiego zdjęcia. " +
@@ -55,6 +61,9 @@ export function AdvancedProjectEditor({ token, initialProject }: AdvancedProject
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const generateStartedAt = useRef<number | null>(null);
   const billingBeforeRef = useRef<OpenAiBilling | null>(null);
+  const { backgrounds, refresh: refreshBackgrounds } = useSavedBackgrounds(token);
+
+  const selectedBackgroundId = backgroundIdFromPath(project.background_image_path);
 
   const aiProgress = getAiRenderProgress(project.settings);
   const progressPercent =
@@ -259,15 +268,42 @@ export function AdvancedProjectEditor({ token, initialProject }: AdvancedProject
           />
         </Card>
         <Card>
-          <FileDropzone
+          <BackgroundProductPicker
             label="Tło produktu"
             hint="JPEG, PNG lub WebP — tło studyjne lub platforma"
             previewUrl={previews.background}
             disabled={!!loading || isGenerating}
-            onFile={(file) =>
+            loading={loading === "background" || loading === "background-select"}
+            deletingBackgroundId={
+              loading?.startsWith("bg-delete-") ? loading.slice("bg-delete-".length) : null
+            }
+            backgrounds={backgrounds}
+            selectedBackgroundId={selectedBackgroundId}
+            backgroundThumbUrl={(id) => backgroundThumbUrl(id, cacheVersion)}
+            onUpload={(file) =>
               runAction("background", async () => {
                 const updated = await api.uploadBackground(token, project.id, file);
                 setProject(updated);
+                await refreshBackgrounds();
+              })
+            }
+            onSelectBackground={(backgroundId) =>
+              runAction("background-select", async () => {
+                const updated = await api.selectProjectBackground(
+                  token,
+                  project.id,
+                  backgroundId,
+                );
+                setProject(updated);
+              })
+            }
+            onDeleteBackground={(backgroundId) =>
+              runAction(`bg-delete-${backgroundId}`, async () => {
+                await api.deleteBackground(token, backgroundId);
+                const updated = await api.getProject(token, project.id);
+                setProject(updated);
+                await refreshBackgrounds();
+                setCacheVersion((v) => v + 1);
               })
             }
           />

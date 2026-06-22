@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import run_migrations
-from app.routers import auth, billing, generated_files, photo_series, projects, saved_prompts
+from app.routers import auth, backgrounds, billing, generated_files, photo_series, projects, saved_prompts
 from app.services.storage import ensure_upload_dir
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(backgrounds.router, prefix="/api/v1")
 app.include_router(billing.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(photo_series.router, prefix="/api/v1/projects")

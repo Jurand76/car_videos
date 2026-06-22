@@ -58,6 +58,12 @@ export type OpenAiBilling = {
   updated_at: string;
 };
 
+export type SavedBackground = {
+  id: string;
+  filename: string;
+  created_at: string;
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -191,6 +197,23 @@ export const api = {
     );
   },
 
+  selectProjectBackground: (token: string, id: string, backgroundId: string) =>
+    request<Project>(
+      `/api/v1/projects/${id}/background/select`,
+      { method: "POST", body: JSON.stringify({ background_id: backgroundId }) },
+      token,
+    ),
+
+  listBackgrounds: (token: string) =>
+    request<SavedBackground[]>("/api/v1/backgrounds", {}, token),
+
+  deleteBackground: (token: string, backgroundId: string) =>
+    request<void>(
+      `/api/v1/backgrounds/${encodeURIComponent(backgroundId)}`,
+      { method: "DELETE" },
+      token,
+    ),
+
   listGeneratedFiles: (token: string, scope: GeneratedFileScope = "renders") =>
     request<GeneratedFile[]>(`/api/v1/generated-files?scope=${scope}`, {}, token),
 
@@ -276,6 +299,7 @@ export const api = {
       exterior_prompt?: string;
       interior_prompt?: string;
       ai_config?: Record<string, unknown>;
+      section_ai_configs?: Record<string, Record<string, unknown>>;
     },
   ) =>
     request<Project>(
@@ -288,6 +312,7 @@ export const api = {
           exterior_prompt: data?.exterior_prompt ?? null,
           interior_prompt: data?.interior_prompt ?? null,
           ai_config: data?.ai_config ?? null,
+          section_ai_configs: data?.section_ai_configs ?? null,
         }),
         timeoutMs: 15_000,
       },
@@ -309,6 +334,9 @@ export const api = {
 
   fileUrl: (id: string, fileType: "car" | "background" | "result") =>
     `${API_URL}/api/v1/projects/${id}/files/${fileType}`,
+
+  backgroundLibraryFileUrl: (backgroundId: string) =>
+    `${API_URL}/api/v1/backgrounds/${encodeURIComponent(backgroundId)}/file`,
 
   generatedFileUrl: (id: string) => `${API_URL}/api/v1/generated-files/${id}/file`,
 

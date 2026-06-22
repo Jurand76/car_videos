@@ -18,7 +18,7 @@ from app.database import async_session
 from app.models.photo_series_item import PhotoSeriesItem
 from app.models.project import Project
 from app.services.ai_compositing import generate_ai_render
-from app.services.ai_config import result_extension
+from app.services.ai_config import resolve_section_ai_config, result_extension
 from app.services.generated_files import archive_generated_result
 from app.services.storage import user_upload_dir
 
@@ -418,7 +418,8 @@ async def run_photo_series_batch(
     section_prompts: dict[str, str],
     exterior_prompt: str,
     interior_prompt: str,
-    ai_config: dict,
+    default_ai_config: dict,
+    section_ai_configs: dict[str, dict] | None = None,
 ) -> None:
     started_at = datetime.now(timezone.utc)
     settings_cfg = get_settings()
@@ -477,8 +478,8 @@ async def run_photo_series_batch(
 
         total = len(pending_items)
         workers = max(1, min(settings_cfg.series_parallel_workers, total))
-        ext = result_extension(ai_config.get("output_format", "png"))
         upload_dir = user_upload_dir(user_id)
+        section_configs = section_ai_configs or {}
         counters = _BatchCounters()
         semaphore = asyncio.Semaphore(workers)
 
@@ -515,6 +516,12 @@ async def run_photo_series_batch(
                     interior_prompt,
                 )
                 category_label = _category_label(item.category, index)
+                item_ai_config = resolve_section_ai_config(
+                    item.category,
+                    section_configs,
+                    default_ai_config,
+                )
+                ext = result_extension(item_ai_config.get("output_format", "png"))
                 result_path = str(upload_dir / f"series_result_{item.id}{ext}")
                 tasks.append(
                     _process_series_item(
@@ -527,7 +534,7 @@ async def run_photo_series_batch(
                         category_label=category_label,
                         sort_index=index,
                         result_path=result_path,
-                        ai_config=ai_config,
+                        ai_config=item_ai_config,
                         semaphore=semaphore,
                         counters=counters,
                         total=total,

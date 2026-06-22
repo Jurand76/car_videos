@@ -44,10 +44,23 @@ class SeriesGenerateRequest(BaseModel):
     exterior_prompt: str | None = Field(default=None, max_length=4000)
     interior_prompt: str | None = Field(default=None, max_length=4000)
     ai_config: AiImageConfig | None = None
+    section_ai_configs: dict[str, AiImageConfig] | None = None
 
     @field_validator("section_prompts")
     @classmethod
     def validate_section_prompts(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        if value is None:
+            return None
+        for key in value:
+            validate_section_category(key)
+        return value
+
+    @field_validator("section_ai_configs")
+    @classmethod
+    def validate_section_ai_configs(
+        cls,
+        value: dict[str, AiImageConfig] | None,
+    ) -> dict[str, AiImageConfig] | None:
         if value is None:
             return None
         for key in value:

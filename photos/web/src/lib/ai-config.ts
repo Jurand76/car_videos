@@ -28,7 +28,7 @@ export type AiImageConfig = {
 };
 
 export const DEFAULT_AI_CONFIG: AiImageConfig = {
-  quality: "high",
+  quality: "low",
   size: "auto",
   output_format: "png",
   output_compression: 100,
@@ -128,4 +128,42 @@ export function parseAiConfig(settings: Record<string, unknown> | null | undefin
         : DEFAULT_AI_CONFIG.output_format,
     output_compression: 100,
   };
+}
+
+function parseAiConfigValue(raw: unknown): AiImageConfig {
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_AI_CONFIG };
+  }
+  return parseAiConfig({ ai_config: raw as Record<string, unknown> });
+}
+
+export function parseSectionAiConfigs(
+  settings: Record<string, unknown> | null | undefined,
+  sectionIds: string[],
+): Record<string, AiImageConfig> {
+  const fallback = parseAiConfig(settings);
+  const configs: Record<string, AiImageConfig> = {};
+  const raw = settings?.section_ai_configs;
+
+  if (raw && typeof raw === "object") {
+    for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+      configs[id] = parseAiConfigValue(value);
+    }
+  }
+
+  for (const id of sectionIds) {
+    if (!configs[id]) {
+      configs[id] = { ...fallback };
+    }
+  }
+
+  return configs;
+}
+
+export function sectionAiConfigsToSettings(
+  configs: Record<string, AiImageConfig>,
+): Record<string, AiImageConfig> {
+  return Object.fromEntries(
+    Object.entries(configs).map(([id, config]) => [id, { ...config }]),
+  );
 }

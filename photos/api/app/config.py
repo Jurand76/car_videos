@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_admin_api_key: str = ""
     openai_image_model: str = "gpt-image-2"
-    openai_image_quality: str = "high"
+    openai_image_quality: str = "low"
     openai_image_size: str = "auto"
     # Równoległe przetwarzanie serii zdjęć (OpenAI IPM). Tier 1 ≈ 5/min → domyślnie 3.
     series_parallel_workers: int = 3

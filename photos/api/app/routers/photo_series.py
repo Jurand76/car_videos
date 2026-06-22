@@ -261,12 +261,25 @@ async def generate_series(
     section_prompts = dict(settings.get("section_prompts") or {})
     exterior_prompt = str(settings.get("exterior_prompt") or DEFAULT_EXTERIOR_PROMPT)
     interior_prompt = str(settings.get("interior_prompt") or DEFAULT_INTERIOR_PROMPT)
-    ai_config = (
+    default_ai_config = (
         payload.ai_config.model_dump()
         if payload.ai_config is not None
         else parse_ai_config(settings).model_dump()
     )
-    settings["ai_config"] = ai_config
+    if payload.section_ai_configs is not None:
+        section_ai_configs = {
+            section_id: config.model_dump()
+            for section_id, config in payload.section_ai_configs.items()
+        }
+    else:
+        stored = settings.get("section_ai_configs")
+        section_ai_configs = (
+            {key: dict(value) for key, value in stored.items()}
+            if isinstance(stored, dict)
+            else {}
+        )
+    settings["ai_config"] = default_ai_config
+    settings["section_ai_configs"] = section_ai_configs
     settings["batch_render"] = {
         "phase": "preparing",
         "message": "Przygotowuję serię zdjęć...",
@@ -288,7 +301,8 @@ async def generate_series(
             section_prompts,
             exterior_prompt,
             interior_prompt,
-            ai_config,
+            default_ai_config,
+            section_ai_configs,
         )
     )
     return project

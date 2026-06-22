@@ -16,12 +16,18 @@ from app.database import async_session, get_db
 from app.dependencies import get_current_user
 from app.models.project import Project
 from app.models.user import User
+from app.schemas.background import SelectBackgroundRequest
 from app.schemas.project import AiGenerateRequest, AiImageConfig, ProjectCreate, ProjectResponse, ProjectUpdate
 from app.services.ai_compositing import generate_ai_render
 from app.services.ai_config import parse_ai_config, result_extension
 from app.services.photo_series_batch import DEFAULT_EXTERIOR_PROMPT, DEFAULT_INTERIOR_PROMPT
 from app.services.generated_files import archive_generated_result
-from app.services.storage import save_upload, user_upload_dir
+from app.services.storage import (
+    resolve_user_background,
+    save_background_library,
+    save_upload,
+    user_upload_dir,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +289,10 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
 ) -> Project:
     if payload.project_type == "advanced":
-        settings = {"ai_prompt": ""}
+        settings = {
+            "ai_prompt": "",
+            "ai_config": AiImageConfig().model_dump(),
+        }
     elif payload.project_type == "photo_series":
         settings = {
             "exterior_prompt": DEFAULT_EXTERIOR_PROMPT,
@@ -370,7 +379,29 @@ async def upload_background_image(
 ) -> Project:
     _validate_image(file)
     project = await _get_user_project(project_id, current_user, db)
-    project.background_image_path = await save_upload(current_user.id, file, "background")
+    project.background_image_path = await save_background_library(current_user.id, file)
+    project.status = "draft"
+    await db.commit()
+    await db.refresh(project)
+    return project
+
+
+@router.post("/{project_id}/background/select", response_model=ProjectResponse)
+async def select_background_image(
+    project_id: uuid.UUID,
+    payload: SelectBackgroundRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Project:
+    file_path = resolve_user_background(current_user.id, payload.background_id)
+    if not file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nie znaleziono wybranego tła",
+        )
+
+    project = await _get_user_project(project_id, current_user, db)
+    project.background_image_path = str(file_path)
     project.status = "draft"
     await db.commit()
     await db.refresh(project)

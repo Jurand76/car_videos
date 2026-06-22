@@ -6,13 +6,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AiParametersPanel } from "@/components/ai-parameters-panel";
 import { AiRenderProgress } from "@/components/ai-render-progress";
-import { FileDropzone } from "@/components/file-dropzone";
+import { BackgroundProductPicker } from "@/components/background-product-picker";
 import { GenerationCostBanner } from "@/components/generation-cost-banner";
 import { MultiDropzoneItem, MultiFileDropzone } from "@/components/multi-file-dropzone";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { AiImageConfig, parseAiConfig } from "@/lib/ai-config";
+import { AiImageConfig, DEFAULT_AI_CONFIG, parseSectionAiConfigs, sectionAiConfigsToSettings } from "@/lib/ai-config";
 import {
   batchProgressMessage,
   estimateBatchProgress,
@@ -20,6 +20,11 @@ import {
 } from "@/lib/ai-render-progress";
 import { api, ApiError, formatFetchError, OpenAiBilling, PhotoSeriesItem, Project } from "@/lib/api";
 import { captureBillingBefore, reportGenerationCost } from "@/lib/openai-generation-cost";
+import {
+  backgroundIdFromPath,
+  backgroundThumbUrl,
+  useSavedBackgrounds,
+} from "@/lib/saved-backgrounds";
 
 const DEFAULT_SECTION_PROMPT =
   "Umieść produkt z pierwszego zdjęcia realistycznie na tle z drugiego zdjęcia. " +
@@ -150,7 +155,7 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
   const [name, setName] = useState(project.name);
   const [sections, setSections] = useState<SeriesSection[]>([]);
   const [sectionsReady, setSectionsReady] = useState(false);
-  const [aiConfig, setAiConfig] = useState<AiImageConfig>(() => parseAiConfig(project.settings));
+  const [sectionAiConfigs, setSectionAiConfigs] = useState<Record<string, AiImageConfig>>({});
   const [items, setItems] = useState<PhotoSeriesItem[]>([]);
   const [cacheVersion, setCacheVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -162,6 +167,9 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const generateStartedAt = useRef<number | null>(null);
   const billingBeforeRef = useRef<OpenAiBilling | null>(null);
+  const { backgrounds, refresh: refreshBackgrounds } = useSavedBackgrounds(token);
+
+  const selectedBackgroundId = backgroundIdFromPath(project.background_image_path);
 
   const batchProgress = getBatchRenderProgress(project.settings);
   const progressPercent =
@@ -182,11 +190,15 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
   useEffect(() => {
     refreshItems()
       .then((list) => {
-        setSections(parseSections(project.settings, list));
+        const parsed = parseSections(project.settings, list);
+        setSections(parsed);
+        setSectionAiConfigs(parseSectionAiConfigs(project.settings, parsed.map((section) => section.id)));
         setSectionsReady(true);
       })
       .catch(() => {
-        setSections(parseSections(project.settings, []));
+        const parsed = parseSections(project.settings, []);
+        setSections(parsed);
+        setSectionAiConfigs(parseSectionAiConfigs(project.settings, parsed.map((section) => section.id)));
         setSectionsReady(true);
       });
   }, [project.settings, refreshItems]);
@@ -319,13 +331,26 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
 
   const sectionSettings = useMemo(() => sectionsToSettings(sections), [sections]);
 
-  async function persistSections(nextSections: SeriesSection[]) {
+  const seriesSettingsPatch = useCallback(
+    (extra: Record<string, unknown> = {}) => ({
+      ...project.settings,
+      ...sectionSettings,
+      section_ai_configs: sectionAiConfigsToSettings(sectionAiConfigs),
+      ...extra,
+    }),
+    [project.settings, sectionSettings, sectionAiConfigs],
+  );
+
+  async function persistSections(
+    nextSections: SeriesSection[],
+    configs: Record<string, AiImageConfig> = sectionAiConfigs,
+  ) {
     const updated = await api.updateProject(token, project.id, {
       name,
       settings: {
         ...project.settings,
         ...sectionsToSettings(nextSections),
-        ai_config: aiConfig,
+        section_ai_configs: sectionAiConfigsToSettings(configs),
       },
     });
     setProject(updated);
@@ -376,8 +401,14 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
             },
           ];
 
+    const newSection = updatedSections[updatedSections.length - 1];
+    const nextConfigs = {
+      ...sectionAiConfigs,
+      [newSection.id]: { ...DEFAULT_AI_CONFIG },
+    };
     setSections(updatedSections);
-    void persistSections(updatedSections).catch((err) => setError(formatFetchError(err)));
+    setSectionAiConfigs(nextConfigs);
+    void persistSections(updatedSections, nextConfigs).catch((err) => setError(formatFetchError(err)));
   }
 
   function removeSection(sectionId: string) {
@@ -389,12 +420,21 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
 
       const updatedSections = sections.filter((section) => section.id !== sectionId);
       setSections(updatedSections);
+      setSectionAiConfigs((current) => {
+        const next = { ...current };
+        delete next[sectionId];
+        return next;
+      });
 
       const updated = await api.updateProject(token, project.id, {
         settings: {
           ...project.settings,
           ...sectionsToSettings(updatedSections),
-          ai_config: aiConfig,
+          section_ai_configs: sectionAiConfigsToSettings(
+            Object.fromEntries(
+              Object.entries(sectionAiConfigs).filter(([id]) => id !== sectionId),
+            ),
+          ),
         },
       });
       setProject(updated);
@@ -406,6 +446,10 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
     setSections((current) =>
       current.map((section) => (section.id === sectionId ? { ...section, prompt } : section)),
     );
+  }
+
+  function updateSectionAiConfig(sectionId: string, config: AiImageConfig) {
+    setSectionAiConfigs((current) => ({ ...current, [sectionId]: config }));
   }
 
   async function handleStop() {
@@ -439,7 +483,7 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
       const updated = await api.generatePhotoSeries(token, project.id, {
         sections: sectionSettings.sections,
         section_prompts: sectionSettings.section_prompts,
-        ai_config: aiConfig,
+        section_ai_configs: sectionAiConfigsToSettings(sectionAiConfigs),
       });
       setProject(updated);
       startPolling();
@@ -471,11 +515,7 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
               runAction("save", async () => {
                 const updated = await api.updateProject(token, project.id, {
                   name,
-                  settings: {
-                    ...project.settings,
-                    ...sectionSettings,
-                    ai_config: aiConfig,
-                  },
+                  settings: seriesSettingsPatch(),
                 });
                 setProject(updated);
               })
@@ -560,15 +600,42 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
         </Card>
 
         <Card className="h-full">
-          <FileDropzone
+          <BackgroundProductPicker
             label="Tło produktu"
             hint="Wspólne tło dla wszystkich zdjęć w serii"
             previewUrl={backgroundUrl}
             disabled={!!loading || isGenerating}
-            onFile={(file) =>
+            loading={loading === "background" || loading === "background-select"}
+            deletingBackgroundId={
+              loading?.startsWith("bg-delete-") ? loading.slice("bg-delete-".length) : null
+            }
+            backgrounds={backgrounds}
+            selectedBackgroundId={selectedBackgroundId}
+            backgroundThumbUrl={(id) => backgroundThumbUrl(id, cacheVersion)}
+            onUpload={(file) =>
               runAction("background", async () => {
                 const updated = await api.uploadBackground(token, project.id, file);
                 setProject(updated);
+                await refreshBackgrounds();
+              })
+            }
+            onSelectBackground={(backgroundId) =>
+              runAction("background-select", async () => {
+                const updated = await api.selectProjectBackground(
+                  token,
+                  project.id,
+                  backgroundId,
+                );
+                setProject(updated);
+              })
+            }
+            onDeleteBackground={(backgroundId) =>
+              runAction(`bg-delete-${backgroundId}`, async () => {
+                await api.deleteBackground(token, backgroundId);
+                const updated = await api.getProject(token, project.id);
+                setProject(updated);
+                await refreshBackgrounds();
+                setCacheVersion((v) => v + 1);
               })
             }
           />
@@ -626,13 +693,13 @@ export function PhotoSeriesEditor({ token, initialProject }: PhotoSeriesEditorPr
                 <AiParametersPanel
                   token={token}
                   prompt={section.prompt}
-                  aiConfig={aiConfig}
+                  aiConfig={sectionAiConfigs[section.id] ?? DEFAULT_AI_CONFIG}
                   productSize={null}
                   disabled={!!loading}
                   generating={isGenerating}
                   hideGenerate
                   onPromptChange={(text) => updateSectionPrompt(section.id, text)}
-                  onAiConfigChange={setAiConfig}
+                  onAiConfigChange={(config) => updateSectionAiConfig(section.id, config)}
                   onRestoreDefaultPrompt={() => updateSectionPrompt(section.id, DEFAULT_SECTION_PROMPT)}
                   onGenerate={handleGenerate}
                 />
