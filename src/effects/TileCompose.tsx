@@ -1,8 +1,21 @@
-import { AbsoluteFill, Easing, Img, staticFile } from "remotion";
+import {
+  Easing,
+  Img,
+  staticFile,
+  useVideoConfig,
+} from "remotion";
 import type { TransitionType } from "../transitions";
+import { FrameFill } from "./FrameFill";
 
 const COLS = 10;
 const ROWS = 6;
+
+/** Docelowy rozmiar kafelka na ekranie (px); siatka dopasowuje się do klatru. */
+export const TILES_IN_SIZE_PX = 64;
+
+/** Losowy start w obrębie przejścia; każdy kafelek domyka się w stałym czasie. */
+const TILES_IN_POP_WINDOW = 0.62;
+const TILES_IN_POP_SPAN = 0.22;
 
 type TileComposeProps = {
   image: string;
@@ -11,11 +24,18 @@ type TileComposeProps = {
   scale?: number;
 };
 
-const ease = (t: number) => Easing.out(Easing.cubic)(Math.min(1, Math.max(0, t)));
+const ease = (t: number) =>
+  Easing.out(Easing.cubic)(Math.min(1, Math.max(0, t)));
 
 const hash = (col: number, row: number, seed: number) => {
   const x = Math.sin(col * 12.9898 + row * 78.233 + seed) * 43758.5453;
   return x - Math.floor(x);
+};
+
+export const getTilesInGrid = (width: number, height: number) => {
+  const cols = Math.max(1, Math.ceil(width / TILES_IN_SIZE_PX));
+  const rows = Math.max(1, Math.ceil(height / TILES_IN_SIZE_PX));
+  return { cols, rows };
 };
 
 const getTileMotion = (
@@ -25,29 +45,31 @@ const getTileMotion = (
   p: number,
   width: number,
   height: number,
+  cols: number,
+  rows: number,
 ) => {
-  const stagger = (col + row) / (COLS + ROWS);
-  const local = ease((p - stagger * 0.35) / 0.65);
+  if (variant === "tilesIn") {
+    const start = hash(col, row, 17) * TILES_IN_POP_WINDOW;
+    const local = ease((p - start) / TILES_IN_POP_SPAN);
 
-  if (variant === "mosaic") {
-    const angle = (hash(col, row, 1) - 0.5) * 180 * (1 - local);
-    const dist = (1 - local) * (80 + hash(col, row, 2) * 220);
-    const rad = hash(col, row, 3) * Math.PI * 2;
     return {
-      x: Math.cos(rad) * dist,
-      y: Math.sin(rad) * dist,
-      rotate: angle,
-      scale: 0.4 + local * 0.6,
-      opacity: local,
+      x: 0,
+      y: 0,
+      rotate: 0,
+      scale: local,
+      opacity: local > 0 ? 1 : 0,
     };
   }
 
+  const stagger = (col + row) / (cols + rows);
+  const local = ease((p - stagger * 0.35) / 0.65);
+
   if (variant === "tilesRadial") {
-    const cx = COLS / 2;
-    const cy = ROWS / 2;
+    const cx = cols / 2;
+    const cy = rows / 2;
     const dx = col - cx;
     const dy = row - cy;
-    const dist0 = Math.sqrt(dx * dx + dy * dy) / (COLS / 2);
+    const dist0 = Math.sqrt(dx * dx + dy * dy) / (cols / 2);
     const localR = ease((p - dist0 * 0.25) / 0.75);
     return {
       x: dx * (1 - localR) * 40,
@@ -69,24 +91,12 @@ const getTileMotion = (
     };
   }
 
-  // tilesIn — kafle wjeżdżają z krawędzi
-  const fromLeft = col < COLS / 3;
-  const fromRight = col > (COLS * 2) / 3;
-  const fromTop = row < ROWS / 3;
-  const fromBottom = row > (ROWS * 2) / 3;
-  let x = 0;
-  let y = 0;
-  if (fromLeft) x = (1 - local) * -width * 0.6;
-  if (fromRight) x = (1 - local) * width * 0.6;
-  if (fromTop) y = (1 - local) * -height * 0.6;
-  if (fromBottom) y = (1 - local) * height * 0.6;
-
   return {
-    x,
-    y,
-    rotate: (1 - local) * (fromLeft ? -15 : 15),
-    scale: 0.85 + local * 0.15,
-    opacity: local,
+    x: 0,
+    y: 0,
+    rotate: 0,
+    scale: 1,
+    opacity: 1,
   };
 };
 
@@ -96,48 +106,120 @@ export const TileCompose: React.FC<TileComposeProps> = ({
   variant,
   scale = 1,
 }) => {
+  const { width, height } = useVideoConfig();
+  const isOverlay = variant === "tilesIn";
+  const { cols, rows } = isOverlay
+    ? getTilesInGrid(width, height)
+    : { cols: COLS, rows: ROWS };
+
+  const cellW = width / cols;
+  const cellH = height / rows;
+  const imageSrc = staticFile(image);
+
   const cells = [];
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
-      const motion = getTileMotion(variant, col, row, progress, 1280, 720);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const motion = getTileMotion(
+        variant,
+        col,
+        row,
+        progress,
+        width,
+        height,
+        cols,
+        rows,
+      );
+
+      if (!isOverlay && motion.opacity <= 0) {
+        continue;
+      }
+
+      const tileScale = isOverlay ? Math.max(0, motion.scale) : motion.scale;
+      const tileVisible = isOverlay ? tileScale > 0 : motion.opacity > 0;
+
+      const cellStyle = isOverlay
+        ? {
+            position: "absolute" as const,
+            left: col * cellW,
+            top: row * cellH,
+            width: cellW,
+            height: cellH,
+          }
+        : {
+            position: "absolute" as const,
+            left: `${(col / cols) * 100}%`,
+            top: `${(row / rows) * 100}%`,
+            width: `${100 / cols}%`,
+            height: `${100 / rows}%`,
+          };
+
+      const sliceStyle = isOverlay
+        ? {
+            position: "absolute" as const,
+            left: -col * cellW,
+            top: -row * cellH,
+            width,
+            height,
+            maxWidth: "none" as const,
+            objectFit: "cover" as const,
+            objectPosition: "center center" as const,
+            display: "block" as const,
+          }
+        : {
+            position: "absolute" as const,
+            width: `${cols * 100}%`,
+            height: `${rows * 100}%`,
+            maxWidth: "none" as const,
+            left: `${-col * 100}%`,
+            top: `${-row * 100}%`,
+            objectFit: "cover" as const,
+          };
+
       cells.push(
         <div
           key={`${col}-${row}`}
           style={{
-            position: "absolute",
-            left: `${(col / COLS) * 100}%`,
-            top: `${(row / ROWS) * 100}%`,
-            width: `${100 / COLS}%`,
-            height: `${100 / ROWS}%`,
+            ...cellStyle,
             overflow: "hidden",
-            opacity: motion.opacity,
-            transform: `translate(${motion.x}px, ${motion.y}px) rotate(${motion.rotate}deg) scale(${motion.scale})`,
+            opacity: tileVisible ? motion.opacity : 0,
+            visibility: tileVisible ? "visible" : "hidden",
           }}
         >
-          <Img
-            src={staticFile(image)}
+          <div
             style={{
-              position: "absolute",
-              width: `${COLS * 100}%`,
-              height: `${ROWS * 100}%`,
-              maxWidth: "none",
-              left: `${-col * 100}%`,
-              top: `${-row * 100}%`,
-              objectFit: "cover",
+              position: "relative",
+              width: "100%",
+              height: "100%",
+              transform: `translate(${motion.x}px, ${motion.y}px) rotate(${motion.rotate}deg) scale(${tileScale})`,
+              transformOrigin: "center center",
             }}
-          />
+          >
+            {isOverlay ? (
+              <img src={imageSrc} alt="" style={sliceStyle} />
+            ) : (
+              <Img src={imageSrc} style={sliceStyle} />
+            )}
+          </div>
         </div>,
       );
     }
   }
 
   return (
-    <AbsoluteFill style={{ transform: `scale(${scale})` }}>{cells}</AbsoluteFill>
+    <FrameFill
+      style={{
+        transform: isOverlay ? undefined : `scale(${scale})`,
+        pointerEvents: "none",
+      }}
+    >
+      {cells}
+    </FrameFill>
   );
 };
 
 export const isTileEffect = (type?: TransitionType) =>
-  type === "mosaic" ||
-  type === "tilesIn" ||
-  type === "tilesRadial" ||
-  type === "shatter";
+  type === "tilesIn" || type === "tilesRadial" || type === "shatter";
+
+export const isTilesInOverlay = (type?: TransitionType) => type === "tilesIn";
+
+export const getTilesInTransitionFrames = (): number => 40;

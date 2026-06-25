@@ -25,7 +25,7 @@ const getFinalDrift = (slideIndex: number): DriftTransform => {
   };
 };
 
-/** Liniowy pan w granicach PAN_ROOM — pozycja zostaje po zakończeniu ruchu aż do końca slajdu. */
+/** Liniowy pan w granicach PAN_ROOM — od końca wejścia do startu przejścia wyjścia. */
 export const getSubtleDriftTransform = (
   frame: number,
   durationInFrames: number,
@@ -33,14 +33,9 @@ export const getSubtleDriftTransform = (
   slideIndex: number,
 ): DriftTransform => {
   const exitStart = Math.max(0, durationInFrames - transitionDuration);
-  const totalBangFrames = Math.min(
-    28,
-    Math.max(14, Math.round(transitionDuration * 1.4)),
-  );
-  const bangStart = Math.max(0, exitStart - totalBangFrames);
   const holdStart = transitionDuration;
   const final = getFinalDrift(slideIndex);
-  const holdWindow = Math.max(1, bangStart - holdStart);
+  const holdWindow = Math.max(1, exitStart - holdStart);
   const panFrames = Math.min(
     Math.max(10, Math.round(holdWindow * 0.7)),
     holdWindow,

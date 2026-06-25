@@ -39,6 +39,10 @@ import {
   getExportJob,
   removeExportJob,
 } from "./exportJobs";
+import {
+  DEFAULT_FLOW_AI_TEMPERATURE,
+  getDefaultFlowSystemPrompt,
+} from "./flowAiConfig";
 
 loadProjectEnv();
 
@@ -181,6 +185,10 @@ app.get("/api/health", (_req, res) => {
     photosWebUrl: PHOTOS_WEB_URL,
     loginUrl: `${PHOTOS_WEB_URL}/login`,
     signOutUrl: `${PHOTOS_WEB_URL}/api/auth/signout`,
+    flowAiDefaults: {
+      systemPrompt: getDefaultFlowSystemPrompt(),
+      temperature: DEFAULT_FLOW_AI_TEMPERATURE,
+    },
   });
 });
 
@@ -594,6 +602,7 @@ app.post("/api/generate", requireVideoAuthApi, async (req, res) => {
       beatStrengths,
       analyzer,
       confidence,
+      flowAiConfig,
     } = req.body as GenerateInput & { projectId?: string };
 
     if (!projectId) {
@@ -649,6 +658,7 @@ app.post("/api/generate", requireVideoAuthApi, async (req, res) => {
       beatStrengths: beatStrengths ?? undefined,
       analyzer: analyzer ?? undefined,
       confidence: confidence ?? undefined,
+      flowAiConfig: flowAiConfig ?? undefined,
     });
 
     writeProject(manifest, PROJECT_PATH);

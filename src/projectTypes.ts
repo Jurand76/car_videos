@@ -2,6 +2,14 @@ import type { TransitionType } from "./transitions";
 import type { TextEffect } from "./effects/textEffects";
 import type { MusicSyncInfo, SlideTiming } from "./sync";
 
+export type FlowAiConfig = {
+  /** Nadpisanie system promptu dla generowania flow. Puste = domyślny szablon. */
+  systemPrompt?: string;
+  temperature?: number;
+  /** Użytkownik zapisał konfigurację AI w tym projekcie (≠ globalne domyślne). */
+  customized?: boolean;
+};
+
 export type SlideLocation = "exterior" | "interior" | "detail" | "other";
 
 export type ProjectSlide = {
@@ -49,4 +57,6 @@ export type ProjectManifest = {
   allowedTransitions?: TransitionType[];
   /** Dozwolone animacje tekstu — brak = wszystkie. */
   allowedTextEffects?: TextEffect[];
+  /** Parametry DeepSeek / OpenAI przy generowaniu flow animacji. */
+  flowAiConfig?: FlowAiConfig;
 };

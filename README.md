@@ -53,3 +53,4 @@ projekt_autka/
 | `npm run dev:gateway` | Tylko hub + panel wideo (:4000) |
 | `npm run dev:photos:web` | Tylko Next.js zdjęć (:3010) |
 | `npm run dev` | Tylko Remotion Studio (:3000) |
+| `npm run dev:studio` | Studio z `--force-new` (gdy port 3000 „zajęty”) |

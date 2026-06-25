@@ -1,4 +1,5 @@
-import { AbsoluteFill, Img, interpolate, staticFile } from "remotion";
+import { Img, interpolate, staticFile } from "remotion";
+import { FrameFill } from "./FrameFill";
 
 type GlitchImageProps = {
   image: string;
@@ -17,7 +18,7 @@ export const GlitchImage: React.FC<GlitchImageProps> = ({
   const slice = Math.floor(intensity * 6);
 
   return (
-    <AbsoluteFill
+    <FrameFill
       style={{
         transform: `scale(${scale}) translate(${shakeX}px, ${shakeY}px)`,
       }}
@@ -28,11 +29,13 @@ export const GlitchImage: React.FC<GlitchImageProps> = ({
           width: "100%",
           height: "100%",
           objectFit: "cover",
+          objectPosition: "center center",
           transform: `translateX(${split}px)`,
           filter: `hue-rotate(${slice * 40}deg) saturate(1.4)`,
+          display: "block",
         }}
       />
-      <AbsoluteFill
+      <FrameFill
         style={{
           mixBlendMode: "screen",
           opacity: 0.55 * intensity,
@@ -44,12 +47,14 @@ export const GlitchImage: React.FC<GlitchImageProps> = ({
             width: "100%",
             height: "100%",
             objectFit: "cover",
+            objectPosition: "center center",
             transform: `translateX(${-split * 1.5}px)`,
             filter: "hue-rotate(90deg)",
+            display: "block",
           }}
         />
-      </AbsoluteFill>
-      <AbsoluteFill
+      </FrameFill>
+      <FrameFill
         style={{
           mixBlendMode: "multiply",
           opacity: 0.35 * intensity,
@@ -61,12 +66,14 @@ export const GlitchImage: React.FC<GlitchImageProps> = ({
             width: "100%",
             height: "100%",
             objectFit: "cover",
+            objectPosition: "center center",
             transform: `translateY(${split}px)`,
             filter: "hue-rotate(-70deg)",
+            display: "block",
           }}
         />
-      </AbsoluteFill>
-      <AbsoluteFill
+      </FrameFill>
+      <FrameFill
         style={{
           background: `repeating-linear-gradient(
             0deg,
@@ -78,7 +85,7 @@ export const GlitchImage: React.FC<GlitchImageProps> = ({
           opacity: intensity,
         }}
       />
-    </AbsoluteFill>
+    </FrameFill>
   );
 };
 

@@ -8,6 +8,7 @@ import {
   getSlideStart,
   getSlideTransitionDuration,
   getTotalDuration,
+  getTransitionEarlyFrames,
   PROJECT,
   SLIDES,
 } from "./project";
@@ -62,11 +63,18 @@ export const MyComposition = () => {
         const exitOverlap = getSlideTransitionDuration(index);
         const premountFor = Math.max(enterOverlap, exitOverlap);
 
+        const transitionEarlyFrames = getTransitionEarlyFrames(
+          index,
+          enterTransition,
+        );
+        const sequenceFrom = slideStart - transitionEarlyFrames;
+        const sequenceDuration = slideDuration + transitionEarlyFrames;
+
         return (
           <Sequence
             key={`${slide.image}-${index}-${contentDuration}-${slide.beats ?? 0}`}
-            from={slideStart}
-            durationInFrames={slideDuration}
+            from={sequenceFrom}
+            durationInFrames={sequenceDuration}
             premountFor={premountFor}
           >
             <Slide

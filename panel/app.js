@@ -25,24 +25,81 @@ let audioAnalysisPending = false;
 let persistedManifestMeta = null;
 /** Klucz ustawień rytmu z ostatniego «Generuj flow» — omija fałszywe niezgodności BPM/beatów. */
 let lastFlowTimingKey = null;
+/** @type {{ systemPrompt: string, temperature: number }} */
+let flowAiDefaults = { systemPrompt: "", temperature: 0.7 };
+/** @type {{ systemPrompt: string, temperature: number, customized: boolean }} */
+let flowAiConfig = { systemPrompt: "", temperature: 0.7, customized: false };
 
-const ALL_GRAPHIC_EFFECTS = [
-  "flash", "glitch", "mosaic", "tilesIn", "shatter", "shockwave", "strobeCut",
-  "tilesRadial", "zoomSpin", "rgbSplit", "spinIn", "pixelate", "kaleidFlip",
-  "stripsHorizontal", "stripsVertical", "wipeLeft", "pushLeft", "zoomIn", "flip",
-  "slideLeft", "rotateCw", "blur", "squeeze", "slideRight", "zoomOut", "wipeRight",
-  "slideUp", "pushRight", "fade", "slideDown", "wipeUp", "rotateCcw", "wipeDown",
+const GRAPHIC_EFFECT_GROUPS = [
+  {
+    id: "slides",
+    title: "Slajdy",
+    hint: "Klasyczne przejścia: przesunięcie w lewo, prawo, górę lub dół, przenikanie, zoom, rozmycie, ściskanie.",
+    effects: [
+      "fade",
+      "slideLeft",
+      "slideRight",
+      "slideUp",
+      "slideDown",
+      "zoomIn",
+      "zoomOut",
+      "blur",
+      "squeeze",
+    ],
+  },
+  {
+    id: "wow",
+    title: "Błyski i uderzenia",
+    hint: "Mocne cięcia: błysk, stroboskop, fala uderzeniowa, glitch, mozaika, zanikanie kolorów, kafelki, rozbicie, rozmycie, rozszczep RGB.",
+    effects: [
+      "flash",
+      "strobeCut",
+      "shockwave",
+      "glitch",
+      "mosaic",
+      "colorFade",
+      "tilesIn",
+      "tilesRadial",
+      "shatter",
+      "pixelate",
+      "rgbSplit",
+    ],
+  },
+  {
+    id: "rotate",
+    title: "Obroty",
+    hint: "Obrót kadru, wjazd obrotowy, zoom z obrotem, przerzucenie 3D, kalejdoskop.",
+    effects: ["rotateCw", "rotateCcw", "spinIn", "zoomSpin", "flip", "kaleidFlip"],
+  },
+  {
+    id: "strips",
+    title: "Pasy i bloki",
+    hint: "Pasy — 3 fragmenty wjeżdżają naprzemiennie. Bloki — 3 kostki nowego zdjęcia pojawiają się jedna po drugiej na starym obrazie.",
+    effects: [
+      "stripsHorizontal",
+      "stripsVertical",
+      "blocksHorizontal",
+      "blocksVertical",
+    ],
+  },
 ];
+
+const ALL_GRAPHIC_EFFECTS = GRAPHIC_EFFECT_GROUPS.flatMap((group) => group.effects);
 
 const ALL_TEXT_EFFECTS = [
   "boomIn", "mosaicIn", "shatterIn", "glitchIn", "popIn", "waveIn", "stampIn",
   "elasticIn", "slideUp", "scaleIn", "blurIn", "slideLeft",
 ];
 
+/** Wzorcowe zdjęcia do podglądu, gdy projekt nie ma jeszcze slajdów. */
+const GRAPHIC_EFFECT_PREVIEW_FALLBACK_OUT = "2.jpg";
+const GRAPHIC_EFFECT_PREVIEW_FALLBACK_IN = "5.jpg";
+
 const GRAPHIC_EFFECT_LABELS = {
   flash: "Błysk",
   glitch: "Glitch",
   mosaic: "Mozaika",
+  colorFade: "Zanikanie kolorów",
   tilesIn: "Kafelki",
   shatter: "Rozbicie",
   shockwave: "Fala uderzeniowa",
@@ -51,28 +108,47 @@ const GRAPHIC_EFFECT_LABELS = {
   zoomSpin: "Zoom + obrót",
   rgbSplit: "Rozszczep RGB",
   spinIn: "Wjazd obrotowy",
-  pixelate: "Pikselizacja",
+  pixelate: "Rozmycie",
   kaleidFlip: "Kalejdoskop",
   stripsHorizontal: "Pasy poziome",
   stripsVertical: "Pasy pionowe",
-  wipeLeft: "Zasłona w lewo",
-  pushLeft: "Przesunięcie w lewo",
-  zoomIn: "Przybliżenie",
-  flip: "Przerzucenie",
+  blocksHorizontal: "Bloki poziome",
+  blocksVertical: "Bloki pionowe",
   slideLeft: "Slajd w lewo",
   rotateCw: "Obrót zgodnie z zegarem",
-  blur: "Rozmycie",
+  blur: "Rozmycie miękkie",
   squeeze: "Ściskanie",
   slideRight: "Slajd w prawo",
+  zoomIn: "Przybliżenie",
+  flip: "Przerzucenie 3D",
   zoomOut: "Oddalenie",
-  wipeRight: "Zasłona w prawo",
   slideUp: "Slajd w górę",
-  pushRight: "Przesunięcie w prawo",
   fade: "Przenikanie",
   slideDown: "Slajd w dół",
-  wipeUp: "Zasłona w górę",
   rotateCcw: "Obrót przeciwnie",
-  wipeDown: "Zasłona w dół",
+};
+
+/** Stare nazwy (push/wipe) → slajd w tym samym kierunku. */
+const LEGACY_GRAPHIC_EFFECT_ALIASES = {
+  pushLeft: "slideLeft",
+  pushRight: "slideRight",
+  wipeLeft: "slideLeft",
+  wipeRight: "slideRight",
+  wipeUp: "slideUp",
+  wipeDown: "slideDown",
+};
+
+const normalizeGraphicEffectId = (id) => LEGACY_GRAPHIC_EFFECT_ALIASES[id] ?? id;
+
+const normalizeGraphicEffectIds = (ids) => {
+  const normalized = new Set();
+  for (const id of ids) {
+    const canonical = normalizeGraphicEffectId(id);
+    if (ALL_GRAPHIC_EFFECTS.includes(canonical)) {
+      normalized.add(canonical);
+    }
+  }
+  return [...normalized];
 };
 
 const TEXT_EFFECT_LABELS = {
@@ -96,21 +172,40 @@ let selectedGraphicEffects = new Set(ALL_GRAPHIC_EFFECTS);
 let selectedTextEffects = new Set(ALL_TEXT_EFFECTS);
 /** @type {Set<string> | null} */
 let graphicEffectsDraft = null;
+/** @type {number} */
+let graphicEffectsGroupIndex = 0;
 /** @type {Set<string> | null} */
 let textEffectsDraft = null;
 
-const getEffectLabel = (id, kind) =>
-  kind === "graphic"
-    ? GRAPHIC_EFFECT_LABELS[id] ?? id
-    : TEXT_EFFECT_LABELS[id] ?? id;
+const getEffectCanonicalId = (id, kind) =>
+  kind === "graphic" ? normalizeGraphicEffectId(id) : id;
+
+const getEffectLabelPl = (id, kind) => {
+  const canonical = getEffectCanonicalId(id, kind);
+  if (kind === "graphic") {
+    return GRAPHIC_EFFECT_LABELS[canonical] ?? GRAPHIC_EFFECT_LABELS[id] ?? canonical;
+  }
+  return TEXT_EFFECT_LABELS[id] ?? id;
+};
+
+/** Etykieta dostępności: polska nazwa + identyfikator techniczny. */
+const getEffectLabel = (id, kind) => {
+  const pl = getEffectLabelPl(id, kind);
+  const en = getEffectCanonicalId(id, kind);
+  return `${pl} (${en})`;
+};
+
+const getEffectLabelHtml = (id, kind) => {
+  const pl = escapeHtml(getEffectLabelPl(id, kind));
+  const en = escapeHtml(getEffectCanonicalId(id, kind));
+  return `${pl} <span class="effect-name-en">(${en})</span>`;
+};
 
 const getSelectedGraphicEffects = () => [...selectedGraphicEffects];
 const getSelectedTextEffects = () => [...selectedTextEffects];
 
 const setSelectedGraphicEffects = (ids) => {
-  selectedGraphicEffects = new Set(
-    ids.filter((id) => ALL_GRAPHIC_EFFECTS.includes(id)),
-  );
+  selectedGraphicEffects = new Set(normalizeGraphicEffectIds(ids));
   if (!selectedGraphicEffects.size) {
     selectedGraphicEffects = new Set(ALL_GRAPHIC_EFFECTS);
   }
@@ -125,12 +220,64 @@ const setSelectedTextEffects = (ids) => {
   }
 };
 
-const formatEffectsPreview = (ids, kind, max = 4) => {
-  if (!ids.length) return "Brak wybranych efektów";
-  const labels = ids.map((id) => getEffectLabel(id, kind));
-  if (labels.length <= max) return labels.join(" · ");
-  const shown = labels.slice(0, max).join(" · ");
-  return `${shown} · +${labels.length - max}`;
+const LEGACY_PROMPT_EFFECTS_BLOCK_RE =
+  /\n+\[Efekty dostępne w tym projekcie\][\s\S]*$/;
+
+const stripLegacyPromptEffectsBlock = (text) =>
+  String(text ?? "").replace(LEGACY_PROMPT_EFFECTS_BLOCK_RE, "").trimEnd();
+
+const FLOW_ALLOWED_TRANSITIONS_RE =
+  /Dozwolone transition \(oprócz pierwszego slajdu\): [^.]+\./;
+
+const FLOW_ALLOWED_TEXT_EFFECTS_RE =
+  /Dozwolone animacje tekstu[^:]*: [^.]+\./;
+
+const applySelectedEffectsToFlowPrompt = (prompt) => {
+  let text = String(prompt ?? "");
+  if (!text) return text;
+
+  const transitionLine = `Dozwolone transition (oprócz pierwszego slajdu): ${getSelectedGraphicEffects().join(", ")}.`;
+  if (FLOW_ALLOWED_TRANSITIONS_RE.test(text)) {
+    text = text.replace(FLOW_ALLOWED_TRANSITIONS_RE, transitionLine);
+  }
+
+  const textEffectLine = `Dozwolone animacje tekstu (title/subtitle, silnik montażu): ${getSelectedTextEffects().join(", ")}.`;
+  if (FLOW_ALLOWED_TEXT_EFFECTS_RE.test(text)) {
+    return text.replace(FLOW_ALLOWED_TEXT_EFFECTS_RE, textEffectLine);
+  }
+  if (FLOW_ALLOWED_TRANSITIONS_RE.test(text)) {
+    return text.replace(
+      FLOW_ALLOWED_TRANSITIONS_RE,
+      (match) => `${match}\n${textEffectLine}`,
+    );
+  }
+  return `${text.trimEnd()}\n${textEffectLine}`;
+};
+
+/** Aktualizuje listę efektów w system prompcie flow AI (Konfiguracja AI). */
+const syncFlowSystemPromptWithEffects = () => {
+  if (flowAiConfig.customized && flowAiConfig.systemPrompt?.trim()) {
+    flowAiConfig.systemPrompt = applySelectedEffectsToFlowPrompt(flowAiConfig.systemPrompt);
+  }
+  const promptEl = $("flow-ai-system-prompt");
+  if (promptEl && !$("flow-ai-modal")?.hidden) {
+    promptEl.value = getEffectiveFlowSystemPrompt();
+  }
+};
+
+const persistEditorDraftQuietly = async (successMessage) => {
+  if (!activeProjectId) return;
+  try {
+    await saveCurrentProjectDraft();
+    if (successMessage) {
+      setStatus(successMessage, "ok");
+      setSaveProjectStatus("Zapisano automatycznie.", "ok");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Nie udało się zapisać projektu.";
+    setStatus(message, "err");
+    setSaveProjectStatus(message, "err");
+  }
 };
 
 const updateEffectsSummary = () => {
@@ -138,20 +285,12 @@ const updateEffectsSummary = () => {
   const textIds = getSelectedTextEffects();
   const graphicSummary = $("graphic-effects-summary");
   const textSummary = $("text-effects-summary");
-  const graphicChips = $("graphic-effects-chips");
-  const textChips = $("text-effects-chips");
 
   if (graphicSummary) {
     graphicSummary.textContent = `${graphicIds.length} / ${ALL_GRAPHIC_EFFECTS.length}`;
   }
   if (textSummary) {
     textSummary.textContent = `${textIds.length} / ${ALL_TEXT_EFFECTS.length}`;
-  }
-  if (graphicChips) {
-    graphicChips.textContent = formatEffectsPreview(graphicIds, "graphic");
-  }
-  if (textChips) {
-    textChips.textContent = formatEffectsPreview(textIds, "text");
   }
 };
 
@@ -162,10 +301,11 @@ const renderEffectsCheckboxGrid = (containerId, allEffects, draft, kind) => {
     .map((id) => {
       const checked = draft.has(id) ? "checked" : "";
       const label = getEffectLabel(id, kind);
+      const labelHtml = getEffectLabelHtml(id, kind);
       return `
         <label class="effect-check">
           <input type="checkbox" value="${id}" ${checked} />
-          <span>${label}</span>
+          <span>${labelHtml}</span>
         </label>
       `;
     })
@@ -181,14 +321,418 @@ const readEffectsDraftFromGrid = (containerId) => {
   return new Set(ids);
 };
 
+const getActiveGraphicEffectsGroup = () =>
+  GRAPHIC_EFFECT_GROUPS[graphicEffectsGroupIndex] ?? GRAPHIC_EFFECT_GROUPS[0];
+
+const renderGraphicEffectsGroupTabs = () => {
+  const tabs = $("graphic-effects-group-tabs");
+  if (!tabs) return;
+
+  tabs.innerHTML = GRAPHIC_EFFECT_GROUPS.map((group, index) => {
+    const active = index === graphicEffectsGroupIndex ? " is-active" : "";
+    return `<button type="button" class="effects-group-tab${active}" data-group-index="${index}">${group.title}</button>`;
+  }).join("");
+
+  tabs.querySelectorAll(".effects-group-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const nextIndex = Number(btn.getAttribute("data-group-index"));
+      if (!Number.isFinite(nextIndex) || nextIndex === graphicEffectsGroupIndex) return;
+      graphicEffectsGroupIndex = nextIndex;
+      renderGraphicEffectsPage();
+    });
+  });
+};
+
+const updateGraphicEffectsGroupHint = () => {
+  const hint = $("graphic-effects-group-hint");
+  if (hint) {
+    hint.textContent = getActiveGraphicEffectsGroup().hint;
+  }
+};
+
+const renderStripPreviewIn = (variant, imgSrc) => {
+  const axis = variant === "stripsHorizontal" ? "horizontal" : "vertical";
+  const strips = [0, 1, 2]
+    .map(
+      (i) => `
+    <div class="effect-strip effect-strip--${axis} effect-strip--index-${i}" aria-hidden="true">
+      <img class="effect-preview-img" src="${imgSrc}" alt="" />
+    </div>
+  `,
+    )
+    .join("");
+  return `<div class="effect-preview-in effect-preview-in--strips effect-preview-in--${axis}" aria-hidden="true">${strips}</div>`;
+};
+
+const renderBlockPreviewIn = (variant, imgSrc) => {
+  const axis = variant === "blocksHorizontal" ? "horizontal" : "vertical";
+  const strips = [0, 1, 2]
+    .map(
+      (i) => `
+    <div class="effect-block effect-block--${axis} effect-block--index-${i}" aria-hidden="true">
+      <img class="effect-preview-img" src="${imgSrc}" alt="" />
+    </div>
+  `,
+    )
+    .join("");
+  return `<div class="effect-preview-in effect-preview-in--blocks effect-preview-in--${axis}" aria-hidden="true">${strips}</div>`;
+};
+
+/** Podgląd mozaiki: canvas + 2×2 box-filter jak w Remotion (bez CSS scale). */
+const MOSAIC_PREVIEW_LEVELS = [0, 1, 2, 3, 4, 5, 6, 7];
+const MOSAIC_PREVIEW_MAX_LEVEL = 7;
+const mosaicPreviewCache = new Map();
+
+const drawPreviewImageCover = (
+  ctx,
+  image,
+  destWidth,
+  destHeight,
+) => {
+  const sw = image.naturalWidth;
+  const sh = image.naturalHeight;
+  const frameRatio = destWidth / destHeight;
+  const imageRatio = sw / sh;
+
+  let cropW = sw;
+  let cropH = sh;
+  let cropX = 0;
+  let cropY = 0;
+
+  if (imageRatio > frameRatio) {
+    cropW = sh * frameRatio;
+    cropX = (sw - cropW) / 2;
+  } else {
+    cropH = sw / frameRatio;
+    cropY = (sh - cropH) / 2;
+  }
+
+  ctx.drawImage(image, cropX, cropY, cropW, cropH, 0, 0, destWidth, destHeight);
+};
+
+const halvePreviewCanvas2x2 = (source) => {
+  const sw = source.width;
+  const sh = source.height;
+  const dw = Math.max(1, Math.floor(sw / 2));
+  const dh = Math.max(1, Math.floor(sh / 2));
+
+  const dest = document.createElement("canvas");
+  dest.width = dw;
+  dest.height = dh;
+
+  const sctx = source.getContext("2d", { willReadFrequently: true });
+  const dctx = dest.getContext("2d", { willReadFrequently: true });
+  if (!sctx || !dctx) return dest;
+
+  const src = sctx.getImageData(0, 0, sw, sh).data;
+  const out = dctx.createImageData(dw, dh);
+
+  for (let y = 0; y < dh; y++) {
+    for (let x = 0; x < dw; x++) {
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      let count = 0;
+
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < 2; dx++) {
+          const sx = x * 2 + dx;
+          const sy = y * 2 + dy;
+          if (sx >= sw || sy >= sh) continue;
+          const i = (sy * sw + sx) * 4;
+          r += src[i];
+          g += src[i + 1];
+          b += src[i + 2];
+          a += src[i + 3];
+          count++;
+        }
+      }
+
+      const di = (y * dw + x) * 4;
+      const n = count || 1;
+      out.data[di] = r / n;
+      out.data[di + 1] = g / n;
+      out.data[di + 2] = b / n;
+      out.data[di + 3] = a / n;
+    }
+  }
+
+  dctx.putImageData(out, 0, 0);
+  return dest;
+};
+
+const buildPreviewMosaicLevels = (image, frameWidth, frameHeight) => {
+  const base = document.createElement("canvas");
+  base.width = frameWidth;
+  base.height = frameHeight;
+  const baseCtx = base.getContext("2d");
+  if (!baseCtx) return [base];
+
+  baseCtx.imageSmoothingEnabled = false;
+  drawPreviewImageCover(baseCtx, image, frameWidth, frameHeight);
+
+  const levels = [base];
+  let current = base;
+  for (let level = 0; level < MOSAIC_PREVIEW_MAX_LEVEL; level++) {
+    current = halvePreviewCanvas2x2(current);
+    levels.push(current);
+  }
+  return levels;
+};
+
+const loadPreviewImage = (src) =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Podgląd: nie można wczytać ${src}`));
+    img.src = src;
+  });
+
+const loadPreviewMosaicLevels = async (src, frameWidth, frameHeight) => {
+  const key = `${src}@${frameWidth}x${frameHeight}`;
+  const cached = mosaicPreviewCache.get(key);
+  if (cached) return cached;
+
+  const image = await loadPreviewImage(src);
+  const levels = buildPreviewMosaicLevels(image, frameWidth, frameHeight);
+  mosaicPreviewCache.set(key, levels);
+  return levels;
+};
+
+const getMosaicPreviewStageSize = (stage) => {
+  const rect = stage.getBoundingClientRect();
+  const w = Math.max(64, Math.round(rect.width) || 160);
+  const h = Math.max(40, Math.round(rect.height) || 100);
+  return { w, h };
+};
+
+const fillMosaicPreviewLayer = async (layer, frameWidth, frameHeight) => {
+  const src = layer.dataset.mosaicSrc;
+  if (!src || layer.dataset.mosaicFilled === "1") return;
+
+  const levels = await loadPreviewMosaicLevels(src, frameWidth, frameHeight);
+
+  for (const level of MOSAIC_PREVIEW_LEVELS) {
+    const step = layer.querySelector(`.effect-mosaic-step--${level}`);
+    const canvas = step?.querySelector("canvas.effect-mosaic-canvas");
+    const levelCanvas = levels[level];
+    if (!canvas || !levelCanvas) continue;
+
+    canvas.width = levelCanvas.width;
+    canvas.height = levelCanvas.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(levelCanvas, 0, 0);
+  }
+
+  layer.dataset.mosaicFilled = "1";
+};
+
+const ensureMosaicPreviewReady = async (preview) => {
+  const stage = preview.querySelector(".effect-preview-stage");
+  if (!stage) return;
+
+  const { w, h } = getMosaicPreviewStageSize(stage);
+  const layers = stage.querySelectorAll("[data-mosaic-src]");
+  await Promise.all(
+    [...layers].map((layer) => fillMosaicPreviewLayer(layer, w, h)),
+  );
+  stage.dataset.mosaicReady = "1";
+};
+
+const initMosaicPreviews = (container) => {
+  const tiles = container.querySelectorAll('.effect-tile-preview[data-effect="mosaic"]');
+  requestAnimationFrame(() => {
+    tiles.forEach((tile) => {
+      void ensureMosaicPreviewReady(tile);
+    });
+  });
+};
+
+const renderMosaicLevelStep = (level) =>
+  `<div class="effect-mosaic-step effect-mosaic-step--${level}">
+    <canvas class="effect-mosaic-canvas" aria-hidden="true"></canvas>
+  </div>`;
+
+const renderMosaicPreviewLayer = (imgSrc, layerClass) => {
+  const steps = MOSAIC_PREVIEW_LEVELS.map((level) =>
+    renderMosaicLevelStep(level),
+  ).join("");
+  return `<div class="${layerClass} effect-preview-mosaic" data-mosaic-src="${imgSrc}" aria-hidden="true">${steps}</div>`;
+};
+
+const renderColorFadePreviewLayer = (imgSrc, layerClass) =>
+  `<div class="${layerClass} effect-preview-colorFade" aria-hidden="true">
+    <img class="effect-preview-img" src="${imgSrc}" alt="" />
+    <div class="effect-colorFade-veil"></div>
+  </div>`;
+
+/** Siatka kafelków ~64px — pełne pokrycie klatru (jak w Remotion). */
+const TILES_IN_PREVIEW_CELL_PX = 64;
+const TILES_IN_PREVIEW_WIDTH = 160;
+const TILES_IN_PREVIEW_HEIGHT = 100;
+
+const getTilesInPreviewGrid = (width, height) => ({
+  cols: Math.max(1, Math.ceil(width / TILES_IN_PREVIEW_CELL_PX)),
+  rows: Math.max(1, Math.ceil(height / TILES_IN_PREVIEW_CELL_PX)),
+});
+
+const previewHash = (col, row, seed) => {
+  const x = Math.sin(col * 12.9898 + row * 78.233 + seed) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+/** Losowy start animacji — ten sam seed co w Remotion (TileCompose). */
+const TILES_IN_PREVIEW_POP_WINDOW = 0.62;
+const TILES_IN_PREVIEW_ANIM_SEC = 0.38;
+
+const renderTilesInPreviewIn = (imgSrc) => {
+  const { cols, rows } = getTilesInPreviewGrid(
+    TILES_IN_PREVIEW_WIDTH,
+    TILES_IN_PREVIEW_HEIGHT,
+  );
+
+  const cells = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const delay =
+        previewHash(col, row, 17) *
+        TILES_IN_PREVIEW_POP_WINDOW *
+        TILES_IN_PREVIEW_ANIM_SEC;
+      cells.push(`
+      <div
+        class="effect-tiles-pop-cell"
+        style="--col:${col};--row:${row};--cols:${cols};--rows:${rows}"
+        aria-hidden="true"
+      >
+        <div class="effect-tiles-pop-cell-inner" style="animation-delay:${delay.toFixed(3)}s">
+          <img src="${imgSrc}" alt="" />
+        </div>
+      </div>`);
+    }
+  }
+
+  return `<div class="effect-preview-in effect-preview-in--tiles-pop" aria-hidden="true">
+    <div
+      class="effect-tiles-pop-grid"
+      style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr)"
+    >${cells.join("")}</div>
+  </div>`;
+};
+
+const renderGraphicEffectTile = (id, previewImages) => {
+  const checked = graphicEffectsDraft?.has(id) ? "checked" : "";
+  const label = getEffectLabel(id, "graphic");
+  const isMosaic = id === "mosaic";
+  const isColorFade = id === "colorFade";
+  const isStrip = id === "stripsHorizontal" || id === "stripsVertical";
+  const isBlock = id === "blocksHorizontal" || id === "blocksVertical";
+  const isTilesIn = id === "tilesIn";
+  const outLayer = isMosaic
+    ? renderMosaicPreviewLayer(previewImages.out, "effect-preview-out")
+    : isColorFade
+      ? renderColorFadePreviewLayer(previewImages.out, "effect-preview-out")
+      : `<div class="effect-preview-out" aria-hidden="true">
+            <img class="effect-preview-img" src="${previewImages.out}" alt="" />
+          </div>`;
+  const inLayer = isMosaic
+    ? renderMosaicPreviewLayer(previewImages.in, "effect-preview-in")
+    : isTilesIn
+      ? renderTilesInPreviewIn(previewImages.in)
+      : isColorFade
+        ? renderColorFadePreviewLayer(previewImages.in, "effect-preview-in")
+        : isStrip
+        ? renderStripPreviewIn(id, previewImages.in)
+        : isBlock
+          ? renderBlockPreviewIn(id, previewImages.in)
+          : `<div class="effect-preview-in" aria-hidden="true">
+            <img class="effect-preview-img" src="${previewImages.in}" alt="" />
+          </div>`;
+  return `
+    <div class="effect-tile" role="group" aria-label="${label}">
+      <div class="effect-tile-preview" data-effect="${id}">
+        <input type="checkbox" class="effect-tile-checkbox" value="${id}" ${checked} aria-label="Zaznacz ${label}" />
+        <div class="effect-preview-stage">
+          ${outLayer}
+          ${inLayer}
+        </div>
+        <span class="effect-tile-label">${getEffectLabelHtml(id, "graphic")}</span>
+      </div>
+    </div>
+  `;
+};
+
+const renderGraphicEffectsPage = () => {
+  const container = $("graphic-effects-list");
+  if (!container || !graphicEffectsDraft) return;
+
+  graphicEffectsGroupIndex = Math.max(
+    0,
+    Math.min(graphicEffectsGroupIndex, GRAPHIC_EFFECT_GROUPS.length - 1),
+  );
+  const group = getActiveGraphicEffectsGroup();
+  const previewImages = getGraphicEffectPreviewImages();
+
+  container.innerHTML = group.effects
+    .map((id) => renderGraphicEffectTile(id, previewImages))
+    .join("");
+
+  renderGraphicEffectsGroupTabs();
+  updateGraphicEffectsGroupHint();
+  bindGraphicEffectTileEvents(container);
+  initMosaicPreviews(container);
+};
+
+const bindGraphicEffectTileEvents = (container) => {
+  container.querySelectorAll(".effect-tile-checkbox").forEach((input) => {
+    input.addEventListener("change", () => {
+      if (!graphicEffectsDraft) return;
+      if (input.checked) graphicEffectsDraft.add(input.value);
+      else graphicEffectsDraft.delete(input.value);
+    });
+    input.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+  });
+
+  container.querySelectorAll(".effect-tile-preview").forEach((preview) => {
+    const tile = preview.closest(".effect-tile");
+    if (!tile) return;
+
+    preview.addEventListener("mouseenter", () => {
+      if (preview.dataset.effect === "mosaic") {
+        void ensureMosaicPreviewReady(preview).then(() => {
+          preview.classList.remove("is-animating");
+          void preview.offsetWidth;
+          preview.classList.add("is-animating");
+        });
+        return;
+      }
+      preview.classList.remove("is-animating");
+      void preview.offsetWidth;
+      preview.classList.add("is-animating");
+    });
+    preview.addEventListener("mouseleave", () => {
+      preview.classList.remove("is-animating");
+    });
+    tile.addEventListener("click", (event) => {
+      if (event.target instanceof HTMLInputElement) return;
+      const checkbox = preview.querySelector(".effect-tile-checkbox");
+      if (!checkbox) return;
+      checkbox.checked = !checkbox.checked;
+      checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  });
+};
+
 const openGraphicEffectsModal = () => {
   graphicEffectsDraft = new Set(selectedGraphicEffects);
-  renderEffectsCheckboxGrid(
-    "graphic-effects-list",
-    ALL_GRAPHIC_EFFECTS,
-    graphicEffectsDraft,
-    "graphic",
-  );
+  graphicEffectsGroupIndex = 0;
+  renderGraphicEffectsPage();
   const modal = $("graphic-effects-modal");
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
@@ -196,6 +740,7 @@ const openGraphicEffectsModal = () => {
 
 const closeGraphicEffectsModal = () => {
   graphicEffectsDraft = null;
+  graphicEffectsGroupIndex = 0;
   const modal = $("graphic-effects-modal");
   modal.hidden = true;
   modal.setAttribute("aria-hidden", "true");
@@ -221,26 +766,158 @@ const closeTextEffectsModal = () => {
   modal.setAttribute("aria-hidden", "true");
 };
 
-const saveGraphicEffectsDraft = () => {
-  const draft = readEffectsDraftFromGrid("graphic-effects-list");
+const saveGraphicEffectsDraft = async () => {
+  const draft = graphicEffectsDraft ? new Set(graphicEffectsDraft) : readEffectsDraftFromGrid("graphic-effects-list");
   if (!draft.size) {
     setStatus("Wybierz co najmniej jeden efekt graficzny.", "err");
     return;
   }
-  selectedGraphicEffects = draft;
+  selectedGraphicEffects = new Set(draft);
   updateEffectsSummary();
+  syncFlowSystemPromptWithEffects();
   closeGraphicEffectsModal();
+  await persistEditorDraftQuietly("Zapisano wybór efektów graficznych.");
 };
 
-const saveTextEffectsDraft = () => {
+const saveTextEffectsDraft = async () => {
   const draft = readEffectsDraftFromGrid("text-effects-list");
   if (!draft.size) {
     setStatus("Wybierz co najmniej jeden efekt tekstu.", "err");
     return;
   }
-  selectedTextEffects = draft;
+  selectedTextEffects = new Set(draft);
   updateEffectsSummary();
+  syncFlowSystemPromptWithEffects();
   closeTextEffectsModal();
+  await persistEditorDraftQuietly("Zapisano wybór efektów tekstu.");
+};
+
+const clampFlowTemperature = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return flowAiDefaults.temperature ?? 0.7;
+  return Math.min(2, Math.max(0, num));
+};
+
+const getDefaultFlowAiTemperature = () => flowAiDefaults.temperature ?? 0.7;
+
+const getDefaultFlowAiPromptForProject = () =>
+  applySelectedEffectsToFlowPrompt(flowAiDefaults.systemPrompt?.trim() ?? "");
+
+const isProjectFlowAiConfig = (config) =>
+  Boolean(
+    config?.customized ||
+      config?.systemPrompt?.trim() ||
+      (config?.temperature != null && config.temperature !== getDefaultFlowAiTemperature()),
+  );
+
+const getEffectiveFlowSystemPrompt = () => {
+  const raw = flowAiConfig.customized && flowAiConfig.systemPrompt?.trim()
+    ? flowAiConfig.systemPrompt
+    : flowAiDefaults.systemPrompt || "";
+  return applySelectedEffectsToFlowPrompt(raw);
+};
+
+const buildFlowAiConfigPayload = () => {
+  if (!flowAiConfig.customized) {
+    return undefined;
+  }
+
+  const systemPrompt = flowAiConfig.systemPrompt?.trim() ?? "";
+  const temperature = clampFlowTemperature(
+    flowAiConfig.temperature ?? getDefaultFlowAiTemperature(),
+  );
+  const defaultTemp = getDefaultFlowAiTemperature();
+  /** @type {{ customized: boolean, systemPrompt?: string, temperature?: number }} */
+  const payload = { customized: true };
+  if (systemPrompt) payload.systemPrompt = systemPrompt;
+  if (temperature !== defaultTemp) payload.temperature = temperature;
+  return payload;
+};
+
+const applyFlowAiFromManifest = (project) => {
+  const manifestFlowAi = project?.flowAiConfig;
+  if (isProjectFlowAiConfig(manifestFlowAi)) {
+    flowAiConfig = {
+      customized: true,
+      systemPrompt: manifestFlowAi.systemPrompt ?? "",
+      temperature: clampFlowTemperature(
+        manifestFlowAi.temperature ?? getDefaultFlowAiTemperature(),
+      ),
+    };
+    return;
+  }
+  resetFlowAiConfig();
+};
+
+const resetFlowAiConfig = () => {
+  flowAiConfig = {
+    customized: false,
+    systemPrompt: "",
+    temperature: getDefaultFlowAiTemperature(),
+  };
+};
+
+const syncFlowAiTemperatureUi = (value) => {
+  const temperature = clampFlowTemperature(value);
+  const slider = $("flow-ai-temperature");
+  const label = $("flow-ai-temperature-value");
+  if (slider) slider.value = String(temperature);
+  if (label) label.textContent = temperature.toFixed(1);
+};
+
+const openFlowAiModal = () => {
+  const promptEl = $("flow-ai-system-prompt");
+  if (promptEl) {
+    promptEl.value = getEffectiveFlowSystemPrompt();
+  }
+  syncFlowAiTemperatureUi(flowAiConfig.temperature ?? flowAiDefaults.temperature ?? 0.7);
+
+  const modal = $("flow-ai-modal");
+  if (!modal) return;
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+};
+
+const closeFlowAiModal = () => {
+  const modal = $("flow-ai-modal");
+  if (!modal) return;
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+};
+
+const saveFlowAiDraft = async () => {
+  const promptEl = $("flow-ai-system-prompt");
+  const slider = $("flow-ai-temperature");
+  const rawPrompt = promptEl?.value.trim() ?? "";
+  const defaultPrompt = getDefaultFlowAiPromptForProject();
+  const temperature = clampFlowTemperature(slider?.value ?? getDefaultFlowAiTemperature());
+  const defaultTemp = getDefaultFlowAiTemperature();
+  const promptMatchesDefault = !rawPrompt || rawPrompt === defaultPrompt;
+  const tempMatchesDefault = temperature === defaultTemp;
+
+  if (promptMatchesDefault && tempMatchesDefault) {
+    flowAiConfig = {
+      customized: false,
+      systemPrompt: "",
+      temperature: defaultTemp,
+    };
+  } else {
+    flowAiConfig = {
+      customized: true,
+      systemPrompt: promptMatchesDefault ? "" : rawPrompt,
+      temperature,
+    };
+  }
+  closeFlowAiModal();
+  await persistEditorDraftQuietly("Zapisano konfigurację AI.");
+};
+
+const resetFlowAiDraft = () => {
+  const promptEl = $("flow-ai-system-prompt");
+  if (promptEl) {
+    promptEl.value = getDefaultFlowAiPromptForProject();
+  }
+  syncFlowAiTemperatureUi(flowAiDefaults.temperature ?? 0.7);
 };
 
 const resetEffectsSelection = () => {
@@ -261,6 +938,7 @@ const applyEffectsFromManifest = (project) => {
     selectedTextEffects = new Set(ALL_TEXT_EFFECTS);
   }
   updateEffectsSummary();
+  syncFlowSystemPromptWithEffects();
 };
 
 const formatDuration = (seconds) => {
@@ -454,6 +1132,20 @@ const $ = (id) => document.getElementById(id);
 const publicAssetUrl = (relativePath) => {
   const clean = String(relativePath).replace(/\\/g, "/").replace(/^\/+/, "");
   return `${window.location.origin}/public/${clean}`;
+};
+
+/** Zdjęcia do podglądu przejść: slajd 1 (out), slajd 2 lub ponownie 1 (in). */
+const getGraphicEffectPreviewImages = () => {
+  const first = slides[0]?.image;
+  const second = slides[1]?.image ?? first;
+  return {
+    out: first
+      ? publicAssetUrl(first)
+      : publicAssetUrl(GRAPHIC_EFFECT_PREVIEW_FALLBACK_OUT),
+    in: second
+      ? publicAssetUrl(second)
+      : publicAssetUrl(GRAPHIC_EFFECT_PREVIEW_FALLBACK_IN),
+  };
 };
 
 const getProjectIdFromUrl = () => new URLSearchParams(window.location.search).get("project");
@@ -692,7 +1384,7 @@ const buildManifestFromEditor = () => {
 
   return {
     version: 1,
-    prompt: $("prompt").value.trim(),
+    prompt: stripLegacyPromptEffectsBlock($("prompt").value).trim(),
     contentMode: getContentMode(),
     infoText: $("info-text").value.trim(),
     generatedAt: persistedManifestMeta?.generatedAt ?? new Date().toISOString(),
@@ -709,6 +1401,7 @@ const buildManifestFromEditor = () => {
     useAllPublicImages: false,
     allowedTransitions: getSelectedGraphicEffects(),
     allowedTextEffects: getSelectedTextEffects(),
+    flowAiConfig: buildFlowAiConfigPayload(),
     slideTimings: timingFresh ? persistedManifestMeta?.slideTimings : undefined,
     totalDurationFrames: timingFresh ? persistedManifestMeta?.totalDurationFrames : undefined,
     sync: buildSyncFromEditor(),
@@ -803,12 +1496,13 @@ const resetEditorState = () => {
   renderSlides();
   setSlidesSectionExpanded(false);
   resetEffectsSelection();
+  resetFlowAiConfig();
 };
 
 const applyManifestToEditor = (project) => {
   resetEditorState();
   persistedManifestMeta = project;
-  $("prompt").value = project.prompt ?? "";
+  $("prompt").value = stripLegacyPromptEffectsBlock(project.prompt ?? "");
   setContentMode(project.contentMode ?? "manual");
   $("info-text").value = project.infoText ?? "";
   slides = project.slides ?? [];
@@ -841,6 +1535,7 @@ const applyManifestToEditor = (project) => {
   }
   $("sync-to-music").checked = project.sync?.enabled !== false;
   applyEffectsFromManifest(project);
+  applyFlowAiFromManifest(project);
   renderAudioSelect();
   updateAudioMeta();
   renderSlides();
@@ -860,6 +1555,8 @@ const openProject = async (projectId, options = {}) => {
   if (!projectSummary) return;
 
   activeProjectId = projectId;
+  resetFlowAiConfig();
+  closeFlowAiModal();
   if (!options.skipUrl) {
     setProjectInUrl(projectId);
   }
@@ -912,6 +1609,29 @@ const getContentMode = () => {
   return /** @type {"manual" | "fromText"} */ (
     selected?.getAttribute("value") ?? "manual"
   );
+};
+
+const getDefaultSlideBeats = () => Number($("beats-per-slide")?.value) || 16;
+
+const clampSlideBeats = (value) => {
+  const num = Math.round(Number(value));
+  if (!Number.isFinite(num)) return getDefaultSlideBeats();
+  return Math.max(2, Math.min(48, num));
+};
+
+const getSlideBeatsValue = (slide) =>
+  clampSlideBeats(slide?.beats ?? getDefaultSlideBeats());
+
+const formatSlideBeatsHint = (slide) => {
+  const current = getSlideBeatsValue(slide);
+  const globalDefault = getDefaultSlideBeats();
+  if (slide?.beats == null) {
+    return `Domyślnie z ustawień muzyki (${globalDefault} taktów). Możesz nadpisać dla tego slajdu.`;
+  }
+  if (current === globalDefault) {
+    return "Zgodne z tempem slajdów w sekcji muzyki.";
+  }
+  return `Ręcznie: ${current} taktów (globalnie: ${globalDefault}).`;
 };
 
 const updateContentModeUi = () => {
@@ -1106,6 +1826,9 @@ const getSlideMetaLine = (slide) => {
   }
   if (slide.beats) {
     parts.push(`${slide.beats}♩`);
+  } else {
+    const fallback = getDefaultSlideBeats();
+    if (fallback) parts.push(`${fallback}♩`);
   }
   return parts.join(" · ");
 };
@@ -1188,7 +1911,22 @@ const renderSlideModal = () => {
       <span>Podtytuł</span>
       <input type="text" data-field="subtitle" value="${escapeHtml(slide.subtitle ?? "")}" placeholder="Podtytuł" />
     </label>
-    ${slide.beats ? `<p class="modal-hint">Rytm slajdu: <span class="beats-badge">${slide.beats}♩</span> (ustawione przy generowaniu)</p>` : ""}
+    <label class="modal-field modal-field-beats">
+      <span>Rytm slajdu</span>
+      <div class="modal-beats-row">
+        <input
+          type="number"
+          data-field="beats"
+          min="2"
+          max="48"
+          step="1"
+          value="${getSlideBeatsValue(slide)}"
+          aria-describedby="slide-beats-hint"
+        />
+        <span class="modal-beats-unit">taktów</span>
+      </div>
+      <span id="slide-beats-hint" class="modal-field-hint">${escapeHtml(formatSlideBeatsHint(slide))}</span>
+    </label>
     <p class="modal-hint modal-scene-hint"${fromText && !slide.sceneLabel?.trim() ? "" : " hidden"}>Uzupełnij opis zdjęcia — AI dopasuje tekst bez powtórzeń.</p>
     <div class="modal-reorder">
       <button type="button" class="btn btn-ghost" data-move-prev${index === 0 ? " disabled" : ""}>← W lewo</button>
@@ -1226,6 +1964,30 @@ const renderSlideModal = () => {
     const target = /** @type {HTMLInputElement} */ (e.target);
     slides[index].subtitle = target.value;
     updateSlideTileInGrid(index);
+  });
+
+  const beatsInput = body.querySelector("input[data-field='beats']");
+  const beatsHint = body.querySelector("#slide-beats-hint");
+  const syncBeatsUi = () => {
+    if (beatsHint) {
+      beatsHint.textContent = formatSlideBeatsHint(slides[index]);
+    }
+    updateSlideTileInGrid(index);
+    invalidateDerivedTiming();
+  };
+  beatsInput?.addEventListener("input", (e) => {
+    const target = /** @type {HTMLInputElement} */ (e.target);
+    const next = clampSlideBeats(target.value);
+    target.value = String(next);
+    slides[index].beats = next;
+    syncBeatsUi();
+  });
+  beatsInput?.addEventListener("change", (e) => {
+    const target = /** @type {HTMLInputElement} */ (e.target);
+    const next = clampSlideBeats(target.value);
+    target.value = String(next);
+    slides[index].beats = next;
+    syncBeatsUi();
   });
 
   body.querySelector("[data-move-prev]")?.addEventListener("click", () => {
@@ -1521,6 +2283,16 @@ const loadHealth = async () => {
     const studioLink = $("studio-link");
     if (studioLink) {
       studioLink.href = data.studioUrl;
+    }
+  }
+
+  if (data.flowAiDefaults) {
+    flowAiDefaults = {
+      systemPrompt: data.flowAiDefaults.systemPrompt ?? "",
+      temperature: clampFlowTemperature(data.flowAiDefaults.temperature ?? 0.7),
+    };
+    if (!flowAiConfig.customized) {
+      flowAiConfig.temperature = getDefaultFlowAiTemperature();
     }
   }
 
@@ -1844,6 +2616,7 @@ const generate = async () => {
         useAllPublicImages: false,
         allowedTransitions: getSelectedGraphicEffects(),
         allowedTextEffects: getSelectedTextEffects(),
+        flowAiConfig: buildFlowAiConfigPayload(),
         beatTimesSeconds: beatAnalysis?.beatTimesSeconds ?? undefined,
         beatStrengths: beatAnalysis?.beatStrengths ?? undefined,
         analyzer: beatAnalysis?.analyzer ?? undefined,
@@ -1856,6 +2629,7 @@ const generate = async () => {
     persistedManifestMeta = data.project;
     slides = data.project.slides ?? slides;
     applyEffectsFromManifest(data.project);
+    applyFlowAiFromManifest(data.project);
     renderSlides();
     markFlowTimingFresh();
     if (data.project) {
@@ -2007,21 +2781,11 @@ $("graphic-effects-save")?.addEventListener("click", saveGraphicEffectsDraft);
 $("text-effects-save")?.addEventListener("click", saveTextEffectsDraft);
 $("graphic-effects-select-all")?.addEventListener("click", () => {
   graphicEffectsDraft = new Set(ALL_GRAPHIC_EFFECTS);
-  renderEffectsCheckboxGrid(
-    "graphic-effects-list",
-    ALL_GRAPHIC_EFFECTS,
-    graphicEffectsDraft,
-    "graphic",
-  );
+  renderGraphicEffectsPage();
 });
 $("graphic-effects-select-none")?.addEventListener("click", () => {
   graphicEffectsDraft = new Set();
-  renderEffectsCheckboxGrid(
-    "graphic-effects-list",
-    ALL_GRAPHIC_EFFECTS,
-    graphicEffectsDraft,
-    "graphic",
-  );
+  renderGraphicEffectsPage();
 });
 $("text-effects-select-all")?.addEventListener("click", () => {
   textEffectsDraft = new Set(ALL_TEXT_EFFECTS);
@@ -2047,6 +2811,15 @@ document.querySelectorAll("[data-graphic-effects-close]").forEach((el) => {
 document.querySelectorAll("[data-text-effects-close]").forEach((el) => {
   el.addEventListener("click", closeTextEffectsModal);
 });
+$("open-flow-ai-btn")?.addEventListener("click", openFlowAiModal);
+$("flow-ai-save")?.addEventListener("click", saveFlowAiDraft);
+$("flow-ai-reset")?.addEventListener("click", resetFlowAiDraft);
+$("flow-ai-temperature")?.addEventListener("input", (event) => {
+  syncFlowAiTemperatureUi(event.target.value);
+});
+document.querySelectorAll("[data-flow-ai-close]").forEach((el) => {
+  el.addEventListener("click", closeFlowAiModal);
+});
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
@@ -2060,6 +2833,10 @@ document.addEventListener("keydown", (e) => {
   }
   if (!$("text-effects-modal")?.hidden) {
     closeTextEffectsModal();
+    return;
+  }
+  if (!$("flow-ai-modal")?.hidden) {
+    closeFlowAiModal();
   }
 });
 

@@ -20,7 +20,7 @@ export type AnimationPhases = {
 
 export const DEFAULT_ANIMATION_PHASES: AnimationPhases = {
   introBeats: 0,
-  exitBang: true,
+  exitBang: false,
   bangStrength: 0.14,
 };
 
@@ -40,7 +40,7 @@ export const clampTextEnterDelayBeats = (value: number): TextEnterDelayBeats => 
 
 export const buildAnimationPhases = (_beatsPerSlide: number): AnimationPhases => ({
   introBeats: 0,
-  exitBang: true,
+  exitBang: false,
   bangStrength: 0.14,
 });
 
@@ -76,7 +76,7 @@ export const getLocalBeatFrames = (
     .map((f) => f - slideStartFrame);
 };
 
-/** Zoom in → zoom out → dopiero potem cięcie slajdu. */
+/** @deprecated Automatyczny zoom przed cięciem — wyłączony; zoom tylko z efektów zoomIn/zoomOut. */
 export const getExitBangScale = (
   frame: number,
   durationInFrames: number,

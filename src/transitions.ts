@@ -24,6 +24,7 @@ export type TransitionType =
   | "shockwave"
   | "strobeCut"
   | "mosaic"
+  | "colorFade"
   | "tilesIn"
   | "tilesRadial"
   | "shatter"
@@ -33,12 +34,15 @@ export type TransitionType =
   | "pixelate"
   | "kaleidFlip"
   | "stripsHorizontal"
-  | "stripsVertical";
+  | "stripsVertical"
+  | "blocksHorizontal"
+  | "blocksVertical";
 
 export const TRANSITION_TYPES: TransitionType[] = [
   "flash",
   "glitch",
   "mosaic",
+  "colorFade",
   "tilesIn",
   "shatter",
   "shockwave",
@@ -51,8 +55,8 @@ export const TRANSITION_TYPES: TransitionType[] = [
   "kaleidFlip",
   "stripsHorizontal",
   "stripsVertical",
-  "wipeLeft",
-  "pushLeft",
+  "blocksHorizontal",
+  "blocksVertical",
   "zoomIn",
   "flip",
   "slideLeft",
@@ -61,20 +65,17 @@ export const TRANSITION_TYPES: TransitionType[] = [
   "squeeze",
   "slideRight",
   "zoomOut",
-  "wipeRight",
   "slideUp",
-  "pushRight",
   "fade",
   "slideDown",
-  "wipeUp",
   "rotateCcw",
-  "wipeDown",
 ];
 
 export const WOW_EFFECTS: TransitionType[] = [
   "flash",
   "glitch",
   "mosaic",
+  "colorFade",
   "tilesIn",
   "shatter",
   "shockwave",
@@ -87,6 +88,8 @@ export const WOW_EFFECTS: TransitionType[] = [
   "kaleidFlip",
   "stripsHorizontal",
   "stripsVertical",
+  "blocksHorizontal",
+  "blocksVertical",
 ];
 
 export type TransitionRole = "outgoing" | "incoming";
@@ -325,11 +328,14 @@ export const getTransitionStyles = (
     case "shockwave":
     case "strobeCut":
     case "mosaic":
+    case "colorFade":
     case "tilesIn":
     case "tilesRadial":
     case "shatter":
     case "stripsHorizontal":
     case "stripsVertical":
+    case "blocksHorizontal":
+    case "blocksVertical":
       return {
         ...base,
         style: { opacity: incoming ? Math.max(p, 0.01) : inv },
