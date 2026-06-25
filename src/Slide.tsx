@@ -9,7 +9,7 @@ import {
 import { AnimatedSlideText } from "./effects/AnimatedSlideText";
 import { FlashOverlay, getFlashImageOpacity, isFlashEffect } from "./effects/FlashOverlay";
 import { getGlitchIntensity, GlitchImage } from "./effects/GlitchImage";
-import { isBlockEffect, BlockReveal } from "./effects/BlockReveal";
+import { isBlockEffect, BlockReveal, BLOCK_REVEAL_TOTAL_PROGRESS } from "./effects/BlockReveal";
 import { isStripEffect, StripReveal } from "./effects/StripReveal";
 import { getSubtleDriftTransform } from "./effects/subtleDrift";
 import { PanImageFrame } from "./effects/PanImageFrame";
@@ -203,12 +203,14 @@ export const Slide: React.FC<SlideProps> = ({
   const stripEnter =
     enterTransition &&
     isStripEffect(enterTransition) &&
-    overlayEnterProgress < 1;
+    enterTransitionDuration > 0 &&
+    activeFrame < enterTransitionDuration;
 
   const blockEnter =
     enterTransition &&
     isBlockEffect(enterTransition) &&
-    overlayEnterProgress < 1;
+    enterTransitionDuration > 0 &&
+    activeFrame < enterTransitionDuration;
 
   const stripExit =
     exitTransition &&
@@ -357,10 +359,12 @@ export const Slide: React.FC<SlideProps> = ({
     }
 
     if (blockEnter && enterTransition && isBlockEffect(enterTransition)) {
+      const blockProgress =
+        overlayEnterProgress * BLOCK_REVEAL_TOTAL_PROGRESS;
       return (
         <BlockReveal
           image={image}
-          progress={overlayEnterProgress}
+          progress={blockProgress}
           variant={enterTransition}
         />
       );
