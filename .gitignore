@@ -3,6 +3,8 @@ dist
 .DS_Store
 .env
 project.env
+.vs/
+build/
 photos/web/node_modules
 photos/web/.next
 photos/web/.env.local
