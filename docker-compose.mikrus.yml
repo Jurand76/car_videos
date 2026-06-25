@@ -1,7 +1,8 @@
 # Mikrus VPS — bob133.mikrus.xyz
-# Web:  https://bob133-20133.wykr.es  (:20133 → web:3000)
-# API:  https://bob133-30133.wykr.es  (:30133 → api:8000)
-# Wideo: https://bob133-20133.wykr.es/video (Next → gateway:4000)
+# Web:    https://bob133-20133.wykr.es  (:20133 → web:3000)
+# API:    https://bob133-30133.wykr.es  (:30133 → api:8000)
+# Studio: https://bob133-40463.wykr.es  (:40463 → studio:3000)
+# Wideo:  https://bob133-20133.wykr.es/video (Next → gateway:4000)
 #
 # Uruchomienie:
 #   docker compose -f docker-compose.mikrus.yml --env-file project.env up -d --build
@@ -82,12 +83,27 @@ services:
       PHOTOS_API_URL: http://api:8000
       HUB_URL: ${WEB_URL}/hub
       CORS_ORIGINS: ${CORS_ORIGINS:?Ustaw CORS_ORIGINS w project.env}
+      STUDIO_URL: ${STUDIO_URL:?Ustaw STUDIO_URL w project.env}
     volumes:
       - gateway_generated:/app/generated
       - gateway_public:/app/public
     depends_on:
       api:
         condition: service_started
+    networks:
+      - internal
+
+  studio:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    restart: unless-stopped
+    ports:
+      - "${STUDIO_PORT:-40463}:3000"
+    volumes:
+      - gateway_generated:/app/generated
+      - gateway_public:/app/public
+    command: ["npx", "remotion", "studio", "--ipv4", "--port", "3000"]
     networks:
       - internal
 
