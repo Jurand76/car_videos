@@ -1,7 +1,11 @@
 import projectJson from "../generated/project.json";
 import type { ProjectManifest, ProjectSlide } from "./projectTypes";
+import { getColorFadeTransitionFrames, isColorFadeEffect } from "./effects/ColorFadeTransition";
+import { getMosaicTransitionFrames, isMosaicEffect } from "./effects/MosaicTransition";
+import { getTilesInTransitionFrames } from "./effects/TileCompose";
 import { DEFAULT_ANIMATION_PHASES, type AnimationPhases } from "./slideAnimation";
 import { getLastSlideTailFrames, getOutroDurationFrames } from "./sync";
+import type { TransitionType } from "./transitions";
 
 const defaultSync: ProjectManifest["sync"] = {
   enabled: false,
@@ -27,7 +31,7 @@ const normalizeSync = (sync: ProjectManifest["sync"] | undefined): ProjectManife
     animationPhases: legacy
       ? {
           introBeats: legacy.introBeats ?? DEFAULT_ANIMATION_PHASES.introBeats,
-          exitBang: legacy.exitBang ?? legacy.pulseZoom ?? true,
+          exitBang: legacy.exitBang ?? legacy.pulseZoom ?? false,
           bangStrength:
             legacy.bangStrength ?? legacy.pulseStrength ?? 0.14,
         }
@@ -65,8 +69,70 @@ export const getSlideSequenceDuration = (index: number) => {
   return SLIDE_DURATION;
 };
 
-export const getSlideTransitionDuration = (index: number) =>
-  PROJECT.sync.slideTransitionDurations?.[index] ?? TRANSITION_DURATION;
+/** Rzeczywiste nachodzenie dwóch slajdów (z manifestu lub domyślne). */
+export const getSlideTransitionOverlap = (transitionIndex: number): number => {
+  const nextIndex = transitionIndex + 1;
+  if (
+    PROJECT.slideTimings?.[transitionIndex] &&
+    PROJECT.slideTimings?.[nextIndex]
+  ) {
+    const prev = PROJECT.slideTimings[transitionIndex];
+    const next = PROJECT.slideTimings[nextIndex];
+    return Math.max(1, prev.from + prev.duration - next.from);
+  }
+  return (
+    PROJECT.sync.slideTransitionDurations?.[transitionIndex] ??
+    TRANSITION_DURATION
+  );
+};
+
+export const getSlideTransitionDuration = (index: number) => {
+  const overlap = getSlideTransitionOverlap(index);
+  const incoming = SLIDES[index + 1];
+  if (incoming?.transition === "mosaic") {
+    return Math.max(overlap, getMosaicTransitionFrames());
+  }
+  if (incoming?.transition === "colorFade") {
+    return Math.max(overlap, getColorFadeTransitionFrames());
+  }
+  if (incoming?.transition === "tilesIn") {
+    return Math.max(overlap, getTilesInTransitionFrames());
+  }
+  return overlap;
+};
+
+/** Globalna klatka startu przejścia między slajdem `index` a `index + 1`. */
+export const getTransitionStartFrame = (transitionIndex: number): number => {
+  const duration = getSlideTransitionDuration(transitionIndex);
+  if (PROJECT.slideTimings?.[transitionIndex]) {
+    const prev = PROJECT.slideTimings[transitionIndex];
+    return prev.from + prev.duration - duration;
+  }
+  const prevStart = getSlideStart(transitionIndex);
+  const prevDuration = getSlideSequenceDuration(transitionIndex);
+  return prevStart + prevDuration - duration;
+};
+
+export const usesExtendedTransitionOverlap = (
+  type?: TransitionType,
+): boolean =>
+  isColorFadeEffect(type) ||
+  isMosaicEffect(type) ||
+  type === "tilesIn";
+
+/** Klatki wcześniejszego startu sekwencji slajdu (pełne przejście vs overlap z manifestu). */
+export const getTransitionEarlyFrames = (
+  slideIndex: number,
+  enterTransition?: TransitionType,
+): number => {
+  if (slideIndex <= 0 || !usesExtendedTransitionOverlap(enterTransition)) {
+    return 0;
+  }
+  return Math.max(
+    0,
+    getSlideStart(slideIndex) - getTransitionStartFrame(slideIndex - 1),
+  );
+};
 
 export const getOutroFrames = () => getOutroDurationFrames(FPS);
 

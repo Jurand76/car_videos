@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AUTKA.PL — Videoprezentacja</title>
     <link rel="stylesheet" href="/video/styles.css" />
+    <link rel="stylesheet" href="/video/graphic-effect-previews.css" />
   </head>
   <body>
     <header class="site-header">
@@ -92,7 +93,7 @@
 
       <main class="grid">
         <section class="card card-wide assets-card">
-          <h2>1. Assety</h2>
+          <h2>1. Assety - ładowanie zdjęć i muzyki</h2>
 
           <div class="assets-layout assets-layout--single">
             <h3 class="assets-col-title assets-layout-heading">Ładowanie plików</h3>
@@ -195,7 +196,7 @@
             aria-expanded="false"
             aria-controls="slides-section-body"
           >
-            <span class="slides-section-title">2. Slajdy i teksty</span>
+            <span class="slides-section-title">2. Edycja slajdów</span>
             <span class="slides-section-chevron" aria-hidden="true">▾</span>
           </button>
 
@@ -228,7 +229,7 @@
             </label>
           </div>
 
-          <p class="muted sync-hint slide-label-hint">
+          <p class="sync-hint slide-label-hint">
             Kliknij kafelek, żeby edytować. Uchwyt ⠿ przeciągnij, żeby zmienić kolejność slajdów.
           </p>
 
@@ -253,7 +254,6 @@
                   <span class="effects-group-title">Efekty graficzne</span>
                   <span id="graphic-effects-summary" class="effects-group-count">—</span>
                 </div>
-                <p id="graphic-effects-chips" class="effects-preview-chips muted"></p>
                 <button type="button" class="btn btn-secondary effects-picker-btn" id="open-graphic-effects-btn">
                   Wybierz efekty grafiki
                 </button>
@@ -264,9 +264,17 @@
                   <span class="effects-group-title">Efekty tekstu</span>
                   <span id="text-effects-summary" class="effects-group-count">—</span>
                 </div>
-                <p id="text-effects-chips" class="effects-preview-chips muted"></p>
                 <button type="button" class="btn btn-secondary effects-picker-btn" id="open-text-effects-btn">
                   Wybierz efekty tekstu
+                </button>
+              </div>
+
+              <div class="effects-group">
+                <div class="effects-group-head">
+                  <span class="effects-group-title">Konfiguracja AI</span>
+                </div>
+                <button type="button" class="btn btn-secondary effects-picker-btn flow-ai-picker-btn" id="open-flow-ai-btn">
+                  Konfiguracja AI
                 </button>
               </div>
             </aside>
@@ -348,7 +356,7 @@
     <div id="graphic-effects-modal" class="modal" hidden aria-hidden="true">
       <div class="modal-backdrop" data-graphic-effects-close></div>
       <div
-        class="modal-panel modal-panel--effects"
+        class="modal-panel modal-panel--effects modal-panel--graphic-effects"
         role="dialog"
         aria-modal="true"
         aria-labelledby="graphic-effects-modal-title"
@@ -357,13 +365,15 @@
           <h3 id="graphic-effects-modal-title">Efekty graficzne</h3>
           <button type="button" class="modal-close" data-graphic-effects-close aria-label="Zamknij">✕</button>
         </header>
-        <div class="modal-body">
-          <p class="modal-hint">Przejścia między slajdami — używane przy generowaniu flow i synchronizacji z muzyką.</p>
+        <div class="modal-body modal-body--graphic-effects">
           <div class="effects-modal-toolbar">
             <button type="button" class="btn btn-ghost btn-sm" id="graphic-effects-select-all">Zaznacz wszystkie</button>
             <button type="button" class="btn btn-ghost btn-sm" id="graphic-effects-select-none">Odznacz wszystkie</button>
+            <span class="effects-modal-hint">Najedź na kafelek, aby zobaczyć podgląd efektu</span>
           </div>
-          <div id="graphic-effects-list" class="effects-checkbox-grid"></div>
+          <div id="graphic-effects-group-tabs" class="effects-group-tabs" role="tablist" aria-label="Kategorie efektów"></div>
+          <p id="graphic-effects-group-hint" class="effects-group-hint"></p>
+          <div id="graphic-effects-list" class="effects-tiles-grid"></div>
           <div class="modal-footer">
             <button type="button" class="btn btn-ghost" data-graphic-effects-close>Anuluj</button>
             <button type="button" class="btn btn-primary" id="graphic-effects-save">Zapisz wybór</button>
@@ -394,6 +404,49 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-ghost" data-text-effects-close>Anuluj</button>
             <button type="button" class="btn btn-primary" id="text-effects-save">Zapisz wybór</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="flow-ai-modal" class="modal" hidden aria-hidden="true">
+      <div class="modal-backdrop" data-flow-ai-close></div>
+      <div
+        class="modal-panel modal-panel--flow-ai"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="flow-ai-modal-title"
+      >
+        <header class="modal-header">
+          <h3 id="flow-ai-modal-title">Konfiguracja AI — flow animacji</h3>
+          <button type="button" class="modal-close" data-flow-ai-close aria-label="Zamknij">✕</button>
+        </header>
+        <div class="modal-body">
+          <label class="flow-ai-field" for="flow-ai-system-prompt">
+            <span class="flow-ai-field-label">System prompt</span>
+            <span class="flow-ai-field-hint">Instrukcja dla modelu — format JSON, rytm slajdów, dozwolone przejścia i animacje tekstu.</span>
+            <textarea id="flow-ai-system-prompt" rows="14" spellcheck="false"></textarea>
+          </label>
+
+          <label class="flow-ai-field" for="flow-ai-temperature">
+            <span class="flow-ai-field-label">
+              Temperatura: <span id="flow-ai-temperature-value">0.7</span>
+            </span>
+            <span class="flow-ai-field-hint">Niższa = bardziej przewidywalnie, wyższa = bardziej kreatywnie (0–2).</span>
+            <input
+              id="flow-ai-temperature"
+              type="range"
+              min="0"
+              max="2"
+              step="0.1"
+              value="0.7"
+            />
+          </label>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" id="flow-ai-reset">Domyślne</button>
+            <button type="button" class="btn btn-ghost" data-flow-ai-close>Anuluj</button>
+            <button type="button" class="btn btn-primary" id="flow-ai-save">Zapisz</button>
           </div>
         </div>
       </div>

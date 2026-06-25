@@ -2,12 +2,17 @@ import fs from "fs";
 import path from "path";
 import type { ProjectManifest, ProjectSlide } from "../src/projectTypes";
 import { applySlideMontage, hashStringSeed } from "../src/effectMontage";
-import { TRANSITION_TYPES } from "../src/transitions";
 import { getAiStatus, type AiProvider } from "./env";
 import { applyMusicSync, type GenerateInput, resolveBaseBeats } from "./syncProject";
 import { clampBeats, getTempoProfile, resolveSlideBeats } from "../src/sync";
 import { inferLocationFromPath, assignInfoChunksToSlides } from "./slideMatching";
 import { formatMagazineCopy, MAGAZINE_STYLE_PROMPT } from "./magazineCopy";
+import {
+  CONTENT_FROM_TEXT_PROMPT,
+  resolveFlowSystemPrompt,
+  resolveFlowTemperature,
+  pickFlowAiConfigForManifest,
+} from "./flowAiConfig";
 
 export type { GenerateInput } from "./syncProject";
 
@@ -24,6 +29,9 @@ const withEffectPreferences = (
   allowedTextEffects: input.allowedTextEffects?.length
     ? input.allowedTextEffects
     : undefined,
+  flowAiConfig: input.flowAiConfig
+    ? pickFlowAiConfigForManifest(input.flowAiConfig) ?? manifest.flowAiConfig
+    : manifest.flowAiConfig,
 });
 
 const pickTiming = (prompt: string, beatsPerSlide = 16) => {
@@ -191,48 +199,6 @@ export const generateHeuristic = (input: GenerateInput): ProjectManifest => {
   );
 };
 
-const SYSTEM_PROMPT = `Jesteś reżyserem wideo Remotion. Zwracasz WYŁĄCZNIE poprawny JSON (bez markdown) zgodny ze schematem:
-{
-  "slideDuration": number (45-150),
-  "transitionDuration": number (10-35),
-  "kenBurns": boolean,
-  "audioVolume": number (0-1),
-  "slides": [{ "image": string, "title": string, "subtitle"?: string, "transition"?: string, "beats"?: number }]
-}
-Dozwolone transition (oprócz pierwszego slajdu): ${TRANSITION_TYPES.join(", ")}.
-Preferuj efekty WOW (flash, glitch, mosaic, tilesIn, shatter, shockwave) przy dynamicznych promptach.
-Pierwszy slajd NIE ma transition.
-
-WAŻNE — rytm slajdów:
-- W payloadzie jest beatsPerSlide — bazowe tempo wybrane przez użytkownika.
-- Przy beatsPerSlide <= 4: krótkie slajdy (2–4 takty), szybkie cięcia, mocne przejścia.
-- Przy beatsPerSlide >= 16: dłuższe slajdy (12–32 takty), spokojniejszy rytm.
-- ZRÓŻNICUJ beats między slajdami wokół beatsPerSlide (nie wszystkie identyczne).
-- Średnia beats slajdów powinna być bliska beatsPerSlide z payloadu.
-
-Dopasuj tempo, efekty i rytm do promptu użytkownika.
-Zwróć DOKŁADNIE tyle slajdów, ile obrazków dostałeś — nie pomijaj żadnego.
-
-${MAGAZINE_STYLE_PROMPT}`;
-
-const CONTENT_FROM_TEXT_PROMPT = `
-TRYB fromText (payload: infoText + slides[] z polami image, location, sceneLabel):
-- Każdy slajd ma location (exterior/interior/detail/other) i sceneLabel — CO WIDAĆ na zdjęciu.
-- Dopasuj title/subtitle WYŁĄCZNIE do sceneLabel i location. Fotel → tekst o fotelach/tapicerce, NIE o bagażniku.
-- Każdy fakt/parametr z infoText użyj RAZ — ZERO powtórzeń między slajdami (moc, moment, 0-100 itd. tylko raz).
-- Jeśli brakuje parametrów na wszystkie slajdy, napisz krótki redakcyjny opis widocznego elementu (bez liczb z innych slajdów).
-- sceneLabel jest wiążący — traktuj go jak opis kadru od użytkownika.
-- Pierwszy slajd: marka/model w tonie redakcyjnym, dopasowany do kadru.
-- Nie wymyślaj parametrów spoza infoText.
-- Przykład: sceneLabel „fotel kierowcy” → title „Komfort na dłuższe dystanse”, subtitle „Skóra Nappa · podgrzewane fotele · masaż”.`;
-
-const FLOW_ONLY_PROMPT = `
-TRYB flow-only (slides[] mają już title/subtitle):
-- NIE zmieniaj title ani subtitle — zwróć je identycznie jak w payloadzie.
-- NIE ustawiaj beats — taktowanie slajdów ustawia użytkownik (beatsPerSlide w payloadzie).
-- NIE ustawiaj transition — przejścia przypisze silnik montażu (losowo z puli użytkownika).
-- Ustaw tylko pola globalne (slideDuration, transitionDuration, kenBurns, audioVolume).`;
-
 const DESCRIPTIONS_SYSTEM_PROMPT = `Jesteś copywriterem motoryzacyjnym. Zwracasz WYŁĄCZNIE poprawny JSON (bez markdown):
 {
   "slides": [{ "image": string, "title": string, "subtitle"?: string }]
@@ -247,24 +213,6 @@ type LlmConfig = {
   apiKey: string;
   baseUrl: string;
   model: string;
-};
-
-const buildSystemPrompt = (input: GenerateInput) => {
-  const allowed = input.allowedTransitions?.length
-    ? input.allowedTransitions
-    : TRANSITION_TYPES;
-  const transitionList = allowed.join(", ");
-  const base = SYSTEM_PROMPT.replace(
-    /Dozwolone transition \(oprócz pierwszego slajdu\): [^.]+\./,
-    `Dozwolone transition (oprócz pierwszego slajdu): ${transitionList}.`,
-  );
-  if (input.preserveSlideCopy) {
-    return `${base}\n${FLOW_ONLY_PROMPT}`;
-  }
-  if (input.contentMode === "fromText" && input.infoText?.trim()) {
-    return `${base}\n${CONTENT_FROM_TEXT_PROMPT}`;
-  }
-  return base;
 };
 
 const buildDescriptionsUserPayload = (input: GenerateInput) =>
@@ -366,6 +314,7 @@ const callLlmJson = async (
   config: LlmConfig,
   system: string,
   user: string,
+  temperature = resolveFlowTemperature(),
 ): Promise<string> => {
   const response = await fetch(`${config.baseUrl}/v1/chat/completions`, {
     method: "POST",
@@ -375,7 +324,7 @@ const callLlmJson = async (
     },
     body: JSON.stringify({
       model: config.model,
-      temperature: 0.7,
+      temperature,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
@@ -470,8 +419,9 @@ export const generateWithLlm = async (
 ): Promise<ProjectManifest> => {
   const content = await callLlmJson(
     config,
-    buildSystemPrompt(input),
+    resolveFlowSystemPrompt(input),
     buildUserPayload(input),
+    resolveFlowTemperature(input.flowAiConfig),
   );
 
   return parseLlmResponse(input, config.provider, content);

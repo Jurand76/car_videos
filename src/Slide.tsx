@@ -1,25 +1,34 @@
 import {
   AbsoluteFill,
+  Img,
   interpolate,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 import { AnimatedSlideText } from "./effects/AnimatedSlideText";
-import { FlashOverlay, isFlashEffect } from "./effects/FlashOverlay";
+import { FlashOverlay, getFlashImageOpacity, isFlashEffect } from "./effects/FlashOverlay";
 import { getGlitchIntensity, GlitchImage } from "./effects/GlitchImage";
+import { isBlockEffect, BlockReveal } from "./effects/BlockReveal";
 import { isStripEffect, StripReveal } from "./effects/StripReveal";
 import { getSubtleDriftTransform } from "./effects/subtleDrift";
-import { PanningImage } from "./effects/PanningImage";
-import { isTileEffect, TileCompose } from "./effects/TileCompose";
-import type { ProjectSlide } from "./projectTypes";
-import { PROJECT, getSlideTransitionDuration } from "./project";
+import { PanImageFrame } from "./effects/PanImageFrame";
+import { isTileEffect, isTilesInOverlay, TileCompose } from "./effects/TileCompose";
 import {
-  DEFAULT_ANIMATION_PHASES,
-  buildAnimationPhases,
-  getExitBangScale,
-  getTextEnterFrame,
-} from "./slideAnimation";
-import { pickBangStrengthForAccent } from "./accentDriven";
+  ColorFadeTransition,
+  getColorFadeOpacityForLocalFrame,
+  isColorFadeActiveLocalFrame,
+  isColorFadeEffect,
+} from "./effects/ColorFadeTransition";
+import {
+  getMosaicOpacityForLocalFrame,
+  isMosaicActiveLocalFrame,
+  isMosaicEffect,
+  MosaicTransition,
+} from "./effects/MosaicTransition";
+import type { ProjectSlide } from "./projectTypes";
+import { PROJECT, getSlideStart, getSlideTransitionDuration, getTransitionEarlyFrames, getTransitionStartFrame } from "./project";
+import { getTextEnterFrame } from "./slideAnimation";
 import {
   getTransitionStyles,
   type TransitionType,
@@ -40,8 +49,6 @@ export const Slide: React.FC<SlideProps> = ({
   title,
   subtitle,
   textEffect,
-  beats,
-  accentStrength,
   slideIndex,
   localBeatFrames,
   enterTransition,
@@ -56,23 +63,40 @@ export const Slide: React.FC<SlideProps> = ({
   const enterTransitionDuration =
     slideIndex > 0 ? getSlideTransitionDuration(slideIndex - 1) : 0;
   const exitTransitionDuration = getSlideTransitionDuration(slideIndex);
-  const slideBeats = beats ?? PROJECT.sync.beatsPerSlide ?? 16;
-  const phases =
-    beats != null
-      ? buildAnimationPhases(slideBeats)
-      : (PROJECT.sync.animationPhases ?? DEFAULT_ANIMATION_PHASES);
   const framesPerBeat = PROJECT.sync.framesPerBeat ?? Math.round(fps * 0.4);
-  const useChoreography = Boolean(
-    PROJECT.sync.enabled && PROJECT.sync.beatTimesSeconds?.length,
+
+  const transitionEarlyFrames = getTransitionEarlyFrames(
+    slideIndex,
+    enterTransition,
   );
+  const contentActiveFrame = activeFrame - transitionEarlyFrames;
 
   const enterProgress =
     enterTransition !== undefined && enterTransitionDuration > 0
+      ? interpolate(contentActiveFrame, [0, enterTransitionDuration], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })
+      : 1;
+
+  /** Nakładki (kafelki, bloki, pasy) — zegar od startu sekwencji, żeby zgadzać się ze starym slajdem. */
+  const sequenceEnterProgress =
+    enterTransitionDuration > 0
       ? interpolate(activeFrame, [0, enterTransitionDuration], [0, 1], {
           extrapolateLeft: "clamp",
           extrapolateRight: "clamp",
         })
       : 1;
+
+  const isOverlayStyleEnter =
+    Boolean(enterTransition) &&
+    (isTilesInOverlay(enterTransition) ||
+      isBlockEffect(enterTransition) ||
+      isStripEffect(enterTransition));
+
+  const overlayEnterProgress = isOverlayStyleEnter
+    ? sequenceEnterProgress
+    : enterProgress;
 
   const exitStart = Math.max(0, contentFrames - exitTransitionDuration);
   const exitProgress =
@@ -86,7 +110,15 @@ export const Slide: React.FC<SlideProps> = ({
   let transitionStyle: React.CSSProperties = {};
   let zIndex = 1;
 
-  if (exitProgress > 0 && exitTransition) {
+  if (
+    exitProgress > 0 &&
+    exitTransition &&
+    !isColorFadeEffect(exitTransition) &&
+    !isMosaicEffect(exitTransition) &&
+    !isTilesInOverlay(exitTransition) &&
+    !isBlockEffect(exitTransition) &&
+    !isStripEffect(exitTransition)
+  ) {
     const { style, zIndex: z } = getTransitionStyles(
       exitTransition,
       exitProgress,
@@ -94,7 +126,15 @@ export const Slide: React.FC<SlideProps> = ({
     );
     transitionStyle = style;
     zIndex = z;
-  } else if (enterTransition && enterProgress < 1) {
+  } else if (
+    enterTransition &&
+    enterProgress < 1 &&
+    !isColorFadeEffect(enterTransition) &&
+    !isMosaicEffect(enterTransition) &&
+    !isTilesInOverlay(enterTransition) &&
+    !isBlockEffect(enterTransition) &&
+    !isStripEffect(enterTransition)
+  ) {
     const { style, zIndex: z } = getTransitionStyles(
       enterTransition,
       enterProgress,
@@ -102,6 +142,22 @@ export const Slide: React.FC<SlideProps> = ({
     );
     transitionStyle = style;
     zIndex = z;
+  }
+
+  if (exitProgress > 0 && exitTransition && isFlashEffect(exitTransition)) {
+    transitionStyle = {
+      ...transitionStyle,
+      opacity: getFlashImageOpacity(exitProgress, exitTransition, "outgoing"),
+    };
+  } else if (
+    enterTransition &&
+    enterProgress < 1 &&
+    isFlashEffect(enterTransition)
+  ) {
+    transitionStyle = {
+      ...transitionStyle,
+      opacity: getFlashImageOpacity(enterProgress, enterTransition, "incoming"),
+    };
   }
 
   const textEnterDelayBeats =
@@ -122,33 +178,18 @@ export const Slide: React.FC<SlideProps> = ({
   );
 
   const textOpacity = (() => {
-    if (activeFrame < textEnterFrame) return 0;
+    if (contentActiveFrame < textEnterFrame) return 0;
     if (!exitTransition || textHideStart >= contentFrames - 1) return 1;
-    if (activeFrame < textHideStart) return 1;
+    if (contentActiveFrame < textHideStart) return 1;
 
     const hideEnd = Math.min(textHideStart + 10, contentFrames);
     if (hideEnd <= textHideStart) return 1;
 
-    return interpolate(activeFrame, [textHideStart, hideEnd], [1, 0], {
+    return interpolate(contentActiveFrame, [textHideStart, hideEnd], [1, 0], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
   })();
-
-  let imageScale = 1;
-
-  if (exitTransition && phases.exitBang !== false) {
-    const bangStrength =
-      accentStrength != null
-        ? pickBangStrengthForAccent(accentStrength, phases.bangStrength ?? 0.14)
-        : phases.bangStrength ?? 0.14;
-    imageScale = getExitBangScale(
-      activeFrame,
-      contentFrames,
-      exitTransitionDuration,
-      bangStrength,
-    );
-  }
 
   const glitchEnter =
     enterTransition === "glitch" && enterProgress < 1;
@@ -162,59 +203,175 @@ export const Slide: React.FC<SlideProps> = ({
   const stripEnter =
     enterTransition &&
     isStripEffect(enterTransition) &&
-    enterProgress < 1;
+    overlayEnterProgress < 1;
+
+  const blockEnter =
+    enterTransition &&
+    isBlockEffect(enterTransition) &&
+    overlayEnterProgress < 1;
+
+  const stripExit =
+    exitTransition &&
+    isStripEffect(exitTransition) &&
+    exitProgress > 0;
+
+  const blockExit =
+    exitTransition &&
+    isBlockEffect(exitTransition) &&
+    exitProgress > 0;
+
+  const slideStart = getSlideStart(slideIndex);
+  const compositionFrame = slideStart + contentActiveFrame;
+
+  const isMosaicEnterType =
+    Boolean(enterTransition) &&
+    isMosaicEffect(enterTransition) &&
+    slideIndex > 0;
+  const isMosaicExitType =
+    Boolean(exitTransition) && isMosaicEffect(exitTransition);
+
+  const mosaicTransitionIndex = isMosaicEnterType
+    ? slideIndex - 1
+    : isMosaicExitType
+      ? slideIndex
+      : -1;
+
+  const mosaicLocal =
+    mosaicTransitionIndex >= 0
+      ? compositionFrame - getTransitionStartFrame(mosaicTransitionIndex)
+      : -1;
+
+  const mosaicEnter =
+    isMosaicEnterType && isMosaicActiveLocalFrame(mosaicLocal);
+
+  const mosaicExit =
+    isMosaicExitType && isMosaicActiveLocalFrame(mosaicLocal);
+
+  const isColorFadeEnterType =
+    Boolean(enterTransition) &&
+    isColorFadeEffect(enterTransition) &&
+    slideIndex > 0;
+  const isColorFadeExitType =
+    Boolean(exitTransition) && isColorFadeEffect(exitTransition);
+
+  const colorFadeTransitionIndex = isColorFadeEnterType
+    ? slideIndex - 1
+    : isColorFadeExitType
+      ? slideIndex
+      : -1;
+
+  const colorFadeLocal =
+    colorFadeTransitionIndex >= 0
+      ? compositionFrame - getTransitionStartFrame(colorFadeTransitionIndex)
+      : -1;
+
+  const colorFadeEnterActive =
+    isColorFadeEnterType && isColorFadeActiveLocalFrame(colorFadeLocal);
+
+  const colorFadeExitActive =
+    isColorFadeExitType && isColorFadeActiveLocalFrame(colorFadeLocal);
 
   const tileEnter =
     enterTransition &&
     isTileEffect(enterTransition) &&
-    enterProgress < 1;
+    enterTransitionDuration > 0 &&
+    activeFrame < enterTransitionDuration;
 
   const tileExit =
     exitTransition &&
     isTileEffect(exitTransition) &&
+    exitTransition !== "tilesIn" &&
     exitProgress > 0;
 
-  if (tileEnter || tileExit) {
+  if (tileEnter || tileExit || stripEnter || blockEnter || stripExit || blockExit) {
     transitionStyle = {};
+  } else if (mosaicEnter || mosaicExit || colorFadeEnterActive || colorFadeExitActive) {
+    const swapOpacity =
+      mosaicExit || colorFadeExitActive
+        ? mosaicExit
+          ? getMosaicOpacityForLocalFrame(mosaicLocal, "outgoing")
+          : getColorFadeOpacityForLocalFrame(colorFadeLocal, "outgoing")
+        : mosaicEnter
+          ? getMosaicOpacityForLocalFrame(mosaicLocal, "incoming")
+          : getColorFadeOpacityForLocalFrame(colorFadeLocal, "incoming");
+    transitionStyle = {
+      ...transitionStyle,
+      opacity: swapOpacity,
+    };
   }
 
-  const usePan =
-    enterProgress >= 1 &&
-    !glitchEnter &&
-    !glitchExit &&
-    !tileEnter &&
-    !tileExit &&
-    !stripEnter;
+  const panTransform = getSubtleDriftTransform(
+    contentActiveFrame,
+    contentFrames - transitionEarlyFrames,
+    exitTransitionDuration,
+    slideIndex,
+  );
 
-  const drift = usePan
-    ? getSubtleDriftTransform(
-        activeFrame,
-        contentFrames,
-        exitTransitionDuration,
-        slideIndex,
-      )
-    : { translateX: 0, translateY: 0, rotate: 0 };
-
-  const flashExit =
-    exitTransition && isFlashEffect(exitTransition) && exitProgress > 0;
   const flashEnter =
-    enterTransition && isFlashEffect(enterTransition) && enterProgress < 0.95;
-
-  const usesCustomCompose =
-    tileEnter || tileExit || glitchEnter || glitchExit || stripEnter;
-
-  const imageTransform = usesCustomCompose
-    ? `scale(${imageScale})`
-    : undefined;
+    enterTransition && isFlashEffect(enterTransition) && enterProgress < 1;
+  const flashExit =
+    exitTransition &&
+    isFlashEffect(exitTransition) &&
+    exitProgress > 0 &&
+    !flashEnter;
 
   const renderImage = () => {
+    if (colorFadeExitActive && exitTransition) {
+      return (
+        <ColorFadeTransition
+          image={image}
+          role="outgoing"
+          localFrame={colorFadeLocal}
+        />
+      );
+    }
+
+    if (colorFadeEnterActive && enterTransition) {
+      return (
+        <ColorFadeTransition
+          image={image}
+          role="incoming"
+          localFrame={colorFadeLocal}
+        />
+      );
+    }
+
+    if (mosaicExit && exitTransition) {
+      return (
+        <MosaicTransition
+          image={image}
+          role="outgoing"
+          localFrame={mosaicLocal}
+        />
+      );
+    }
+
+    if (mosaicEnter && enterTransition) {
+      return (
+        <MosaicTransition
+          image={image}
+          role="incoming"
+          localFrame={mosaicLocal}
+        />
+      );
+    }
+
+    if (blockEnter && enterTransition && isBlockEffect(enterTransition)) {
+      return (
+        <BlockReveal
+          image={image}
+          progress={overlayEnterProgress}
+          variant={enterTransition}
+        />
+      );
+    }
+
     if (stripEnter && enterTransition && isStripEffect(enterTransition)) {
       return (
         <StripReveal
           image={image}
-          progress={enterProgress}
+          progress={overlayEnterProgress}
           variant={enterTransition}
-          scale={imageScale}
         />
       );
     }
@@ -225,7 +382,6 @@ export const Slide: React.FC<SlideProps> = ({
           image={image}
           progress={1 - exitProgress}
           variant={exitTransition}
-          scale={imageScale}
         />
       );
     }
@@ -234,9 +390,12 @@ export const Slide: React.FC<SlideProps> = ({
       return (
         <TileCompose
           image={image}
-          progress={enterProgress}
+          progress={
+            isTilesInOverlay(enterTransition)
+              ? overlayEnterProgress
+              : enterProgress
+          }
           variant={enterTransition}
-          scale={imageScale}
         />
       );
     }
@@ -246,36 +405,59 @@ export const Slide: React.FC<SlideProps> = ({
         <GlitchImage
           image={image}
           intensity={Math.max(0.15, glitchIntensity)}
-          scale={imageScale}
         />
       );
     }
 
     return (
-      <PanningImage
-        image={image}
-        translateX={drift.translateX}
-        translateY={drift.translateY}
-        rotate={drift.rotate}
-        scale={imageScale}
-        width={width}
-        height={height}
+      <Img
+        src={staticFile(image)}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          objectPosition: "center center",
+          display: "block",
+        }}
       />
     );
   };
+
+  const overlayEnterActive =
+    (tileEnter && enterTransition && isTilesInOverlay(enterTransition)) ||
+    (blockEnter && enterTransition && isBlockEffect(enterTransition)) ||
+    (stripEnter && enterTransition && isStripEffect(enterTransition));
+
+  const imageBackground =
+    colorFadeEnterActive || colorFadeExitActive
+      ? "#444444"
+      : overlayEnterActive
+        ? "transparent"
+        : "#000";
 
   return (
     <AbsoluteFill style={{ zIndex }}>
       <AbsoluteFill
         style={{
           ...transitionStyle,
-          transform: [transitionStyle.transform, imageTransform]
-            .filter(Boolean)
-            .join(" "),
+          transform: transitionStyle.transform,
         }}
       >
-        {renderImage()}
-        <AbsoluteFill className="bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+        <PanImageFrame
+          translateX={panTransform.translateX}
+          translateY={panTransform.translateY}
+          rotate={panTransform.rotate}
+          width={width}
+          height={height}
+          backgroundColor={imageBackground}
+        >
+          {renderImage()}
+        </PanImageFrame>
+        {colorFadeEnterActive ||
+        colorFadeExitActive ||
+        overlayEnterActive ? null : (
+          <AbsoluteFill className="bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+        )}
       </AbsoluteFill>
 
       {flashExit && exitTransition ? (
@@ -291,7 +473,7 @@ export const Slide: React.FC<SlideProps> = ({
           subtitle={subtitle}
           slideIndex={slideIndex}
           textEffect={textEffect}
-          localFrame={activeFrame - textEnterFrame}
+          localFrame={contentActiveFrame - textEnterFrame}
           hideStartFrame={textHideStart - textEnterFrame}
           baseOpacity={textOpacity}
         />

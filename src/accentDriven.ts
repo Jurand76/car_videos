@@ -8,18 +8,20 @@ const STRONG_TRANSITIONS: TransitionType[] = [
   "shatter",
   "zoomSpin",
   "mosaic",
+  "colorFade",
   "tilesRadial",
 ];
 
 const MEDIUM_TRANSITIONS: TransitionType[] = [
-  "pushLeft",
-  "wipeLeft",
+  "slideLeft",
   "zoomIn",
   "tilesIn",
   "rgbSplit",
   "spinIn",
   "stripsHorizontal",
   "stripsVertical",
+  "blocksHorizontal",
+  "blocksVertical",
   "flip",
 ];
 
@@ -28,7 +30,6 @@ const SOFT_TRANSITIONS: TransitionType[] = [
   "blur",
   "slideUp",
   "zoomOut",
-  "wipeUp",
   "rotateCcw",
 ];
 

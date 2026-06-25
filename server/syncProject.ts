@@ -1,6 +1,7 @@
 import type { ProjectManifest } from "../src/projectTypes";
 import type { TransitionType } from "../src/transitions";
 import type { TextEffect } from "../src/effects/textEffects";
+import type { FlowAiConfig } from "../src/projectTypes";
 import {
   computeAccentSync,
   computeMusicSync,
@@ -41,6 +42,7 @@ export type GenerateInput = {
   confidence?: number;
   allowedTransitions?: TransitionType[];
   allowedTextEffects?: TextEffect[];
+  flowAiConfig?: FlowAiConfig;
 };
 
 export const resolveBaseBeats = (input: GenerateInput): number =>

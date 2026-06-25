@@ -1,7 +1,12 @@
-import { AbsoluteFill, Easing, Img, staticFile } from "remotion";
+import { Easing, Img, staticFile } from "remotion";
 import type { TransitionType } from "../transitions";
+import { FrameFill } from "./FrameFill";
 
 const STRIP_COUNT = 3;
+/** Opóźnienie startu kolejnego pasa (nakładanie się animacji). */
+const STRIP_STAGGER = 0.14;
+/** Czas wjazdu jednego pasa względem progressu przejścia 0–1. */
+const STRIP_DURATION = 0.55;
 
 type StripRevealProps = {
   image: string;
@@ -13,15 +18,13 @@ type StripRevealProps = {
 const ease = (t: number) =>
   Easing.out(Easing.cubic)(Math.min(1, Math.max(0, t)));
 
-const getStripProgress = (
-  progress: number,
-  index: number,
-): number => {
-  const gap = 0.2;
-  const window = 0.58;
-  const start = index * gap;
-  return ease((progress - start) / window);
+const getStripProgress = (progress: number, index: number): number => {
+  const start = index * STRIP_STAGGER;
+  return ease((progress - start) / STRIP_DURATION);
 };
+
+/** Pasy 0 i 2 z jednej strony, pas 1 z przeciwnej (naprzemiennie). */
+const stripEntersFromStart = (index: number) => index === 0 || index === 2;
 
 export const StripReveal: React.FC<StripRevealProps> = ({
   image,
@@ -30,13 +33,17 @@ export const StripReveal: React.FC<StripRevealProps> = ({
   scale = 1,
 }) => {
   const strips = [];
+  const isHorizontal = variant === "stripsHorizontal";
 
   for (let i = 0; i < STRIP_COUNT; i++) {
     const local = getStripProgress(progress, i);
-    const fromStart = i === 0 || i === 2;
-    const offset = (1 - local) * 110 * (fromStart ? -1 : 1);
+    const travel = (1 - local) * 110;
+    const sign = stripEntersFromStart(i) ? -1 : 1;
+    const slideTransform = isHorizontal
+      ? `translateX(${sign * travel}%)`
+      : `translateY(${sign * travel}%)`;
 
-    if (variant === "stripsHorizontal") {
+    if (isHorizontal) {
       strips.push(
         <div
           key={i}
@@ -57,7 +64,7 @@ export const StripReveal: React.FC<StripRevealProps> = ({
               height: `${STRIP_COUNT * 100}%`,
               top: `${-i * 100}%`,
               objectFit: "cover",
-              transform: `translateY(${offset}%)`,
+              transform: slideTransform,
             }}
           />
         </div>,
@@ -85,7 +92,7 @@ export const StripReveal: React.FC<StripRevealProps> = ({
             width: `${STRIP_COUNT * 100}%`,
             left: `${-i * 100}%`,
             objectFit: "cover",
-            transform: `translateX(${offset}%)`,
+            transform: slideTransform,
           }}
         />
       </div>,
@@ -93,7 +100,7 @@ export const StripReveal: React.FC<StripRevealProps> = ({
   }
 
   return (
-    <AbsoluteFill style={{ transform: `scale(${scale})` }}>{strips}</AbsoluteFill>
+    <FrameFill style={{ transform: `scale(${scale})` }}>{strips}</FrameFill>
   );
 };
 

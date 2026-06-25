@@ -381,6 +381,8 @@ h2 {
 
 .slide-label-hint {
   margin: 0 0 12px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .toolbar {
@@ -691,6 +693,30 @@ a.btn-primary:hover {
   background: none;
 }
 
+.modal-field-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.modal-beats-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-beats-row input[type="number"] {
+  width: 5.5rem;
+}
+
+.modal-beats-unit {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -858,6 +884,7 @@ a.btn-primary:hover {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-top: 4px;
+  margin-bottom: 6px;
 }
 
 .slides-section-toggle {
@@ -894,11 +921,7 @@ a.btn-primary:hover {
 }
 
 .slides-section-body {
-  margin-top: 4px;
-}
-
-.slides-section-body:has(.info-text-block[hidden]) {
-  margin-top: 1.5rem;
+  margin-top: 1.25rem;
 }
 
 .slides-section-body[hidden] {
@@ -1022,7 +1045,13 @@ a.btn-primary:hover {
 }
 
 .info-text-block {
+  margin-top: 4px;
   margin-bottom: 16px;
+}
+
+.info-text-block .field > span {
+  font-weight: 600;
+  color: var(--text);
 }
 
 .field-wide textarea {
@@ -1102,7 +1131,19 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.flow-ai-picker-btn {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.flow-ai-picker-btn:hover {
+  background: #fde68a;
+  border-color: #fbbf24;
+  color: #78350f;
 }
 
 .effects-group-title {
@@ -1126,6 +1167,45 @@ textarea {
 
 .effects-picker-btn {
   width: 100%;
+}
+
+.flow-ai-field {
+  display: block;
+  margin-top: 18px;
+}
+
+.flow-ai-field-label {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.flow-ai-field-hint {
+  display: block;
+  margin-top: 4px;
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.flow-ai-field textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.flow-ai-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.modal-panel--flow-ai {
+  max-width: 720px;
 }
 
 .effects-modal-toolbar {
@@ -1170,8 +1250,186 @@ textarea {
   flex: 1;
 }
 
+.effect-name-en {
+  font-size: 0.82em;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.effect-check .effect-name-en {
+  color: var(--muted);
+}
+
+.effect-tile-label .effect-name-en {
+  color: #cbd5e1;
+}
+
 .modal-panel--effects {
   width: min(720px, 100%);
+}
+
+.modal-panel--graphic-effects {
+  width: min(1120px, 96vw);
+  height: min(92vh, 900px);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-body--graphic-effects {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-body--graphic-effects .modal-footer {
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+.effects-modal-hint {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--muted);
+  align-self: center;
+}
+
+.effects-tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+  overflow-y: auto;
+}
+
+.effects-group-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.effects-group-tab {
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.effects-group-tab:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.effects-group-tab.is-active {
+  border-color: var(--accent);
+  background: #eff6ff;
+  color: var(--accent);
+}
+
+.effects-group-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.effect-tile {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: #0f172a;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.effect-tile:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.12);
+}
+
+.effect-tile:has(.effect-tile-checkbox:checked) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.effect-tile-preview {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.effect-tile-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 8;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.effect-tile-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 7;
+  padding: 22px 10px 9px;
+  background: linear-gradient(
+    to top,
+    rgba(15, 23, 42, 0.92) 0%,
+    rgba(15, 23, 42, 0.45) 58%,
+    transparent 100%
+  );
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+  pointer-events: none;
+}
+
+.effects-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+.effects-page-label {
+  font-size: 0.88rem;
+  color: var(--muted);
+  min-width: 4.5rem;
+  text-align: center;
+}
+
+@media (max-width: 960px) {
+  .effects-tiles-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .effects-modal-hint {
+    margin-left: 0;
+    width: 100%;
+  }
 }
 
 .btn-sm {
