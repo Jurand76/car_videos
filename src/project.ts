@@ -1,7 +1,9 @@
 import projectJson from "../generated/project.json";
 import type { ProjectManifest, ProjectSlide } from "./projectTypes";
 import { getColorFadeTransitionFrames, isColorFadeEffect } from "./effects/ColorFadeTransition";
+import { getBlockTransitionFrames, isBlockEffect } from "./effects/BlockReveal";
 import { getMosaicTransitionFrames, isMosaicEffect } from "./effects/MosaicTransition";
+import { getStripTransitionFrames, isStripEffect } from "./effects/StripReveal";
 import { getTilesInTransitionFrames } from "./effects/TileCompose";
 import { DEFAULT_ANIMATION_PHASES, type AnimationPhases } from "./slideAnimation";
 import { getLastSlideTailFrames, getOutroDurationFrames } from "./sync";
@@ -98,6 +100,12 @@ export const getSlideTransitionDuration = (index: number) => {
   if (incoming?.transition === "tilesIn") {
     return Math.max(overlap, getTilesInTransitionFrames());
   }
+  if (incoming?.transition && isBlockEffect(incoming.transition)) {
+    return Math.max(overlap, getBlockTransitionFrames());
+  }
+  if (incoming?.transition && isStripEffect(incoming.transition)) {
+    return Math.max(overlap, getStripTransitionFrames());
+  }
   return overlap;
 };
 
@@ -118,7 +126,9 @@ export const usesExtendedTransitionOverlap = (
 ): boolean =>
   isColorFadeEffect(type) ||
   isMosaicEffect(type) ||
-  type === "tilesIn";
+  type === "tilesIn" ||
+  isBlockEffect(type) ||
+  isStripEffect(type);
 
 /** Klatki wcześniejszego startu sekwencji slajdu (pełne przejście vs overlap z manifestu). */
 export const getTransitionEarlyFrames = (

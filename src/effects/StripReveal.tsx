@@ -104,5 +104,11 @@ export const StripReveal: React.FC<StripRevealProps> = ({
   );
 };
 
+/** Ostatni pas kończy się przy ~0.83 progress. */
+export const STRIP_REVEAL_TOTAL_PROGRESS =
+  (STRIP_COUNT - 1) * STRIP_STAGGER + STRIP_DURATION;
+
+export const getStripTransitionFrames = (): number => 30;
+
 export const isStripEffect = (type?: TransitionType) =>
   type === "stripsHorizontal" || type === "stripsVertical";

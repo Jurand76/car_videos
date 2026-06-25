@@ -13,6 +13,13 @@ const BLOCK_REVEAL_ORDER = [0, 2, 1];
 
 const blockStep = BLOCK_DURATION + BLOCK_GAP;
 
+/** Pełny progress animacji (ostatni blok kończy się na tej wartości). */
+export const BLOCK_REVEAL_TOTAL_PROGRESS =
+  (BLOCK_COUNT - 1) * blockStep + BLOCK_DURATION;
+
+/** ~1.38 s przy 30 fps — jak opóźnienia w podglądzie panelu (0 / 0.56 / 1.12 s). */
+export const getBlockTransitionFrames = (): number => 42;
+
 type BlockRevealProps = {
   image: string;
   progress: number;
@@ -43,8 +50,8 @@ export const BlockReveal: React.FC<BlockRevealProps> = ({
 
   for (let i = 0; i < BLOCK_COUNT; i++) {
     const reveal = getBlockReveal(progress, i);
-    const opacity = reveal;
     const scale = 0.88 + reveal * 0.12;
+    const visible = reveal > 0;
 
     const cellStyle = useColumns
       ? {
@@ -63,23 +70,25 @@ export const BlockReveal: React.FC<BlockRevealProps> = ({
     const imgStyle = useColumns
       ? {
           position: "absolute" as const,
+          top: 0,
           height: "100%",
           width: `${BLOCK_COUNT * 100}%`,
+          maxWidth: "none" as const,
           left: `${-i * 100}%`,
           objectFit: "cover" as const,
-          transform: `scale(${scale})`,
-          transformOrigin: "center center",
-          opacity,
+          objectPosition: "center center" as const,
+          display: "block" as const,
         }
       : {
           position: "absolute" as const,
+          left: 0,
           width: "100%",
           height: `${BLOCK_COUNT * 100}%`,
+          maxWidth: "none" as const,
           top: `${-i * 100}%`,
           objectFit: "cover" as const,
-          transform: `scale(${scale})`,
-          transformOrigin: "center center",
-          opacity,
+          objectPosition: "center center" as const,
+          display: "block" as const,
         };
 
     blocks.push(
@@ -91,7 +100,19 @@ export const BlockReveal: React.FC<BlockRevealProps> = ({
           ...cellStyle,
         }}
       >
-        <Img src={staticFile(image)} style={imgStyle} />
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            height: "100%",
+            opacity: visible ? 1 : 0,
+            visibility: visible ? "visible" : "hidden",
+            transform: `scale(${scale})`,
+            transformOrigin: "center center",
+          }}
+        >
+          <Img src={staticFile(image)} style={imgStyle} />
+        </div>
       </div>,
     );
   }
