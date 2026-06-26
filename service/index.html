@@ -7,37 +7,117 @@
     <link rel="stylesheet" href="/service/styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <div class="topbar-inner">
-        <a class="brand" href="/hub">AUTKA.PL</a>
-        <nav class="topnav">
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="site-brand" href="/hub">AUTKA.PL</a>
+        <nav class="site-nav">
           <a href="/hub">Start</a>
           <a href="http://localhost:3010/dashboard">Zdjęcia</a>
           <a href="/video">Wideo</a>
-          <span class="topnav-active">Serwis</span>
+          <span class="site-nav-active">Serwis</span>
         </nav>
       </div>
     </header>
 
-    <main class="page">
-      <div class="hero">
-        <p class="eyebrow">Moduł serwisowy</p>
-        <h1>Obsługa serwisowa</h1>
-        <p class="lead">
-          Tu powstanie baza klientów, samochodów i historii napraw warsztatowych.
-        </p>
+    <main class="service-page">
+      <!-- ============ STRONA GŁÓWNA: 3 KAFELKI ============ -->
+      <section id="view-home" class="view">
+        <div class="page-intro">
+          <h1 class="page-title">Obsługa serwisowa</h1>
+          <p class="page-lead">Wybierz moduł, aby zarządzać danymi warsztatu.</p>
+        </div>
+
+        <div class="tiles-grid">
+          <button class="tile tile-customers" data-open="customers">
+            <div class="tile-icon">👤</div>
+            <h2 class="tile-title">Klienci</h2>
+            <p class="tile-desc">Baza klientów — osoby prywatne i firmy.
+              <span class="tile-count" id="count-customers"></span>
+            </p>
+            <span class="tile-cta">Przeglądaj klientów →</span>
+          </button>
+
+          <button class="tile tile-cars" data-open="cars">
+            <div class="tile-icon">🚗</div>
+            <h2 class="tile-title">Samochody</h2>
+            <p class="tile-desc">Pojazdy klientów z historią napraw.
+              <span class="tile-count" id="count-cars"></span>
+            </p>
+            <span class="tile-cta">Przeglądaj samochody →</span>
+          </button>
+
+          <button class="tile tile-repairs" data-open="repairs">
+            <div class="tile-icon">🔧</div>
+            <h2 class="tile-title">Usługi</h2>
+            <p class="tile-desc">Naprawy i zlecenia warsztatowe z pozycjami.
+              <span class="tile-count" id="count-repairs"></span>
+            </p>
+            <span class="tile-cta">Przeglądaj usługi →</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ============ WIDOK: KLIENT ============ -->
+      <section id="view-customers" class="view" hidden>
+        <header class="view-head">
+          <button class="btn btn-ghost" data-back="home">← Wróć</button>
+          <h1 class="view-title">Klienci</h1>
+          <button class="btn btn-primary" data-action="customer-new">+ Nowy klient</button>
+        </header>
+
+        <div class="toolbar">
+          <input class="search-input" id="customer-search" type="search" placeholder="Szukaj: nazwa, telefon, NIP, email…" />
+        </div>
+
+        <div id="customer-list" class="list-grid"></div>
+      </section>
+
+      <!-- ============ WIDOK: SAMOCHODY ============ -->
+      <section id="view-cars" class="view" hidden>
+        <header class="view-head">
+          <button class="btn btn-ghost" data-back="home">← Wróć</button>
+          <h1 class="view-title">Samochody</h1>
+          <button class="btn btn-primary" data-action="car-new">+ Nowy samochód</button>
+        </header>
+
+        <div class="toolbar">
+          <input class="search-input" id="car-search" type="search" placeholder="Szukaj: marka, model, rejestracja, VIN…" />
+        </div>
+
+        <div id="car-list" class="list-grid"></div>
+      </section>
+
+      <!-- ============ WIDOK: USŁUGI (naprawy) ============ -->
+      <section id="view-repairs" class="view" hidden>
+        <header class="view-head">
+          <button class="btn btn-ghost" data-back="home">← Wróć</button>
+          <h1 class="view-title">Usługi</h1>
+          <button class="btn btn-primary" data-action="repair-new">+ Nowa naprawa</button>
+        </header>
+
+        <div class="toolbar">
+          <input class="search-input" id="repair-search" type="search" placeholder="Szukaj po statusie…" />
+        </div>
+
+        <div id="repair-list" class="list-grid"></div>
+      </section>
+
+      <!-- ============ MODAL (formularze) ============ -->
+      <div id="modal-root" class="modal-root" hidden>
+        <div class="modal-backdrop" data-modal-close></div>
+        <div class="modal" role="dialog" aria-modal="true">
+          <header class="modal-head">
+            <h2 id="modal-title" class="modal-title">Formularz</h2>
+            <button class="btn btn-ghost" data-modal-close>✕</button>
+          </header>
+          <div id="modal-body" class="modal-body"></div>
+        </div>
       </div>
 
-      <div class="placeholder">
-        <div class="placeholder-badge">W budowie</div>
-        <h2>Moduł w przygotowaniu</h2>
-        <p>
-          Funkcjonalność obsługi serwisowej jest w trakcie rozwoju. Wkrótce znajdziesz tu
-          wyszukiwarkę klientów po numerze telefonu, rejestrację pojazdów i historię zleceń
-          naprawczych.
-        </p>
-        <a class="btn" href="/hub">Wróć do panelu głównego →</a>
-      </div>
+      <!-- ============ TOAST ============ -->
+      <div id="toast" class="toast" hidden></div>
     </main>
+
+    <script src="/service/app.js"></script>
   </body>
 </html>

@@ -6,7 +6,19 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import run_migrations
-from app.routers import auth, backgrounds, billing, generated_files, photo_series, projects, saved_prompts
+from app.routers import (
+    auth,
+    backgrounds,
+    billing,
+    generated_files,
+    photo_series,
+    projects,
+    saved_prompts,
+    service_cars,
+    service_customers,
+    service_repairs,
+    service_staff,
+)
 from app.services.storage import ensure_upload_dir
 
 logger = logging.getLogger(__name__)
@@ -44,6 +56,10 @@ app.include_router(projects.router, prefix="/api/v1")
 app.include_router(photo_series.router, prefix="/api/v1/projects")
 app.include_router(generated_files.router, prefix="/api/v1")
 app.include_router(saved_prompts.router, prefix="/api/v1")
+app.include_router(service_customers.router, prefix="/api/v1")
+app.include_router(service_cars.router, prefix="/api/v1")
+app.include_router(service_staff.router, prefix="/api/v1")
+app.include_router(service_repairs.router, prefix="/api/v1")
 
 
 @app.get("/health")
