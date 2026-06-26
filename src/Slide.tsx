@@ -457,11 +457,6 @@ export const Slide: React.FC<SlideProps> = ({
         >
           {renderImage()}
         </PanImageFrame>
-        {colorFadeEnterActive ||
-        colorFadeExitActive ||
-        overlayEnterActive ? null : (
-          <AbsoluteFill className="bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-        )}
       </AbsoluteFill>
 
       {flashExit && exitTransition ? (

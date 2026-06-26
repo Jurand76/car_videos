@@ -5,6 +5,7 @@ RUN apt-get update \
     ca-certificates \
     chromium \
     ffmpeg \
+    nginx \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -27,6 +28,10 @@ ENV REMOTION_BROWSER_EXECUTABLE=/usr/bin/chromium
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+COPY scripts/patch-remotion-content-length.js ./scripts/
+COPY scripts/patch-remotion-node-env.js ./scripts/
+COPY scripts/patch-remotion-process-update.js ./scripts/
+COPY scripts/patch-remotion-index-html.js ./scripts/
 RUN npm ci
 
 COPY server ./server
@@ -36,8 +41,20 @@ COPY src ./src
 COPY public ./public
 COPY generated ./generated
 COPY remotion.config.ts tsconfig.json ./
+COPY scripts/patch-remotion-content-length.js ./scripts/
+COPY scripts/patch-remotion-node-env.js ./scripts/
+COPY scripts/patch-remotion-process-update.js ./scripts/
+COPY scripts/patch-remotion-index-html.js ./scripts/
+COPY docker/nginx-studio.conf /etc/nginx/conf.d/default.conf
+COPY docker/studio-entrypoint.sh /usr/local/bin/studio-entrypoint.sh
 
-RUN mkdir -p generated/video-users generated/exports public/uploads/audio public/uploads/exterior public/uploads/interior
+RUN mkdir -p generated/video-users generated/exports public/uploads/audio public/uploads/exterior public/uploads/interior \
+  && chmod +x /usr/local/bin/studio-entrypoint.sh \
+  && rm -f /etc/nginx/sites-enabled/default \
+  && node scripts/patch-remotion-content-length.js \
+  && node scripts/patch-remotion-node-env.js \
+  && node scripts/patch-remotion-process-update.js \
+  && node scripts/patch-remotion-index-html.js
 
 ENV NODE_ENV=production
 EXPOSE 4000

@@ -1,4 +1,5 @@
 import type { ProjectManifest } from "../src/projectTypes";
+import { ensureVideoResolution } from "../src/videoDefaults";
 import type { TransitionType } from "../src/transitions";
 import type { TextEffect } from "../src/effects/textEffects";
 import type { FlowAiConfig } from "../src/projectTypes";
@@ -203,35 +204,39 @@ export const prepareManifestForRender = async (
   manifest: ProjectManifest,
   root: string,
 ): Promise<ProjectManifest> => {
-  if (!manifest.sync?.enabled || !manifest.audio) {
-    return manifest;
+  const base = ensureVideoResolution(manifest);
+
+  if (!base.sync?.enabled || !base.audio) {
+    return base;
   }
 
   const input: GenerateInput = {
-    prompt: manifest.prompt,
-    slides: manifest.slides,
-    audio: manifest.audio,
-    bpm: manifest.sync.bpm,
-    beatsPerSlide: manifest.sync.beatsPerSlide,
-    textEnterDelayBeats: manifest.sync.textEnterDelayBeats,
-    audioDurationSeconds: manifest.sync.audioDurationSeconds,
+    prompt: base.prompt,
+    slides: base.slides,
+    audio: base.audio,
+    bpm: base.sync.bpm,
+    beatsPerSlide: base.sync.beatsPerSlide,
+    textEnterDelayBeats: base.sync.textEnterDelayBeats,
+    audioDurationSeconds: base.sync.audioDurationSeconds,
     syncToMusic: true,
-    syncMode: manifest.sync.mode ?? "beats",
+    syncMode: base.sync.mode ?? "beats",
     preserveSlideCopy: true,
-    allowedTransitions: manifest.allowedTransitions,
-    allowedTextEffects: manifest.allowedTextEffects,
-    beatTimesSeconds: manifest.sync.beatTimesSeconds,
-    analyzer: manifest.sync.analyzer,
-    confidence: manifest.sync.confidence,
+    allowedTransitions: base.allowedTransitions,
+    allowedTextEffects: base.allowedTextEffects,
+    beatTimesSeconds: base.sync.beatTimesSeconds,
+    analyzer: base.sync.analyzer,
+    confidence: base.sync.confidence,
   };
 
-  return applyMusicSync(
-    {
-      ...manifest,
-      slideTimings: undefined,
-      totalDurationFrames: undefined,
-    },
-    input,
-    root,
+  return ensureVideoResolution(
+    await applyMusicSync(
+      {
+        ...base,
+        slideTimings: undefined,
+        totalDurationFrames: undefined,
+      },
+      input,
+      root,
+    ),
   );
 };

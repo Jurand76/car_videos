@@ -22,6 +22,7 @@ import {
   deleteVideoProject,
   getVideoProjectManifest,
   listVideoProjects,
+  recoverVideoProjectsForUser,
   renameVideoProject,
   saveVideoProjectManifest,
 } from "./videoProjects";
@@ -58,6 +59,7 @@ const UPLOADS_DIR = path.join(PUBLIC_DIR, "uploads");
 const AUDIO_UPLOADS_DIR = path.join(UPLOADS_DIR, "audio");
 const PANEL_DIR = path.join(ROOT, "panel");
 const HUB_DIR = path.join(ROOT, "hub");
+const SERVICE_DIR = path.join(ROOT, "service");
 
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 fs.mkdirSync(path.join(UPLOADS_DIR, "exterior"), { recursive: true });
@@ -168,6 +170,19 @@ app.use(
   express.static(PANEL_DIR),
 );
 
+app.get("/service", requireVideoAuth, (_req, res) => {
+  res.set("Cache-Control", "no-store, must-revalidate");
+  res.sendFile(path.join(SERVICE_DIR, "index.html"));
+});
+app.use(
+  "/service",
+  (_req, res, next) => {
+    res.set("Cache-Control", "no-store, must-revalidate");
+    next();
+  },
+  express.static(SERVICE_DIR),
+);
+
 app.get("/", (_req, res) => {
   res.redirect(`${PHOTOS_WEB_URL}/login`);
 });
@@ -230,7 +245,19 @@ app.get("/api/project", requireVideoAuthApi, (req, res) => {
 });
 
 app.get("/api/video-projects", requireVideoAuthApi, (req, res) => {
-  res.json({ projects: listVideoProjects(req.videoUser!.id) });
+  const userId = req.videoUser!.id;
+  const projects = listVideoProjects(userId);
+  if (projects.length === 0) {
+    console.warn(
+      `[video] GET /api/video-projects userId=${userId} email=${req.videoUser!.email} → 0 projektów (npm run video:scan)`,
+    );
+  }
+  res.json({ projects });
+});
+
+app.post("/api/video-projects/sync-from-disk", requireVideoAuthApi, (req, res) => {
+  const projects = recoverVideoProjectsForUser(req.videoUser!.id);
+  res.json({ projects, recovered: projects.length });
 });
 
 app.post("/api/video-projects", requireVideoAuthApi, (req, res) => {

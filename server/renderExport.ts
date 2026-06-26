@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { ProjectManifest } from "../src/projectTypes";
+import { buildRemotionRenderCliArgs } from "../src/renderDefaults";
 import { writeProject } from "./generate";
 import { prepareManifestForRender } from "./syncProject";
 import {
@@ -46,7 +47,13 @@ const runRemotionCli = (outputPath: string, jobId: string): Promise<void> =>
       message: "Uruchamiam Remotion…",
     });
 
-    const args = ["remotion", "render", COMPOSITION_ID, outputPath, "--log=info"];
+    const args = [
+      "remotion",
+      "render",
+      COMPOSITION_ID,
+      outputPath,
+      ...buildRemotionRenderCliArgs(),
+    ];
     const child = spawn("npx", args, {
       cwd: ROOT,
       shell: true,

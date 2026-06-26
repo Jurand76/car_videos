@@ -13,6 +13,12 @@ import {
   resolveFlowTemperature,
   pickFlowAiConfigForManifest,
 } from "./flowAiConfig";
+import {
+  DEFAULT_VIDEO_FPS,
+  DEFAULT_VIDEO_HEIGHT,
+  DEFAULT_VIDEO_WIDTH,
+  ensureVideoResolution,
+} from "../src/videoDefaults";
 
 export type { GenerateInput } from "./syncProject";
 
@@ -186,9 +192,9 @@ export const generateHeuristic = (input: GenerateInput): ProjectManifest => {
         input.contentMode === "fromText" ? input.infoText?.trim() : undefined,
       generatedAt: new Date().toISOString(),
       generatedBy: "heuristic",
-      fps: 30,
-      width: 1280,
-      height: 720,
+      fps: DEFAULT_VIDEO_FPS,
+      width: DEFAULT_VIDEO_WIDTH,
+      height: DEFAULT_VIDEO_HEIGHT,
       ...timing,
       kenBurns: tempo.kenBurns,
       audio: input.audio,
@@ -288,9 +294,9 @@ const parseLlmResponse = (
         input.contentMode === "fromText" ? input.infoText?.trim() : undefined,
       generatedAt: new Date().toISOString(),
       generatedBy: provider,
-      fps: 30,
-      width: 1280,
-      height: 720,
+      fps: DEFAULT_VIDEO_FPS,
+      width: DEFAULT_VIDEO_WIDTH,
+      height: DEFAULT_VIDEO_HEIGHT,
       slideDuration: parsed.slideDuration,
       transitionDuration: parsed.transitionDuration,
       kenBurns: tempo.kenBurns,
@@ -491,10 +497,11 @@ export const writeProject = (
   projectPath: string,
 ) => {
   fs.mkdirSync(path.dirname(projectPath), { recursive: true });
-  fs.writeFileSync(projectPath, JSON.stringify(manifest, null, 2), "utf-8");
+  const normalized = ensureVideoResolution(manifest);
+  fs.writeFileSync(projectPath, JSON.stringify(normalized, null, 2), "utf-8");
 };
 
 export const readProject = (projectPath: string): ProjectManifest => {
   const raw = fs.readFileSync(projectPath, "utf-8");
-  return JSON.parse(raw) as ProjectManifest;
+  return ensureVideoResolution(JSON.parse(raw) as ProjectManifest);
 };

@@ -19,3 +19,7 @@ probe-err*.txt
 nul
 generated/video-users/
 generated/exports/
+
+# FFmpeg NVENC (Windows, ~100 MB po setup:nvenc)
+tools/remotion-bin-win/
+tools/.cache/

@@ -734,6 +734,7 @@ const openGraphicEffectsModal = () => {
   graphicEffectsGroupIndex = 0;
   renderGraphicEffectsPage();
   const modal = $("graphic-effects-modal");
+  if (!modal) return;
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
 };
@@ -742,6 +743,7 @@ const closeGraphicEffectsModal = () => {
   graphicEffectsDraft = null;
   graphicEffectsGroupIndex = 0;
   const modal = $("graphic-effects-modal");
+  if (!modal) return;
   modal.hidden = true;
   modal.setAttribute("aria-hidden", "true");
 };
@@ -755,6 +757,7 @@ const openTextEffectsModal = () => {
     "text",
   );
   const modal = $("text-effects-modal");
+  if (!modal) return;
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
 };
@@ -762,6 +765,7 @@ const openTextEffectsModal = () => {
 const closeTextEffectsModal = () => {
   textEffectsDraft = null;
   const modal = $("text-effects-modal");
+  if (!modal) return;
   modal.hidden = true;
   modal.setAttribute("aria-hidden", "true");
 };
@@ -989,7 +993,7 @@ const renderAudioSelect = () => {
 
 const loadAudioLibrary = async () => {
   try {
-    const res = await fetch("/api/audio");
+    const res = await apiFetch("/api/audio");
     if (!res.ok) return;
     const data = await res.json();
     availableAudioTracks = data.tracks ?? [];
@@ -1036,7 +1040,7 @@ const applyAudioTrack = async (path, { analyze = true, silent = false } = {}) =>
   setAudioAnalysisPending(true);
   if (!silent) setStatus("Analizuję beaty...");
   try {
-    const res = await fetch("/api/analyze-audio", {
+    const res = await apiFetch("/api/analyze-audio", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path }),
@@ -1127,6 +1131,44 @@ const updateAudioMeta = () => {
 };
 
 const $ = (id) => document.getElementById(id);
+
+/** Token z ?token= — proxy Next (3010→4000) często gubi cookie videoAccess. */
+const getVideoAccessToken = () => {
+  const urlToken = new URLSearchParams(window.location.search).get("token");
+  if (urlToken) return urlToken;
+  return sessionStorage.getItem("videoAccessToken");
+};
+
+const persistVideoAccessToken = () => {
+  const urlToken = new URLSearchParams(window.location.search).get("token");
+  if (urlToken) {
+    sessionStorage.setItem("videoAccessToken", urlToken);
+  }
+};
+
+const clearVideoAccessToken = () => {
+  sessionStorage.removeItem("videoAccessToken");
+};
+
+const withVideoAuth = (url) => {
+  if (!url.startsWith("/api/")) return url;
+  const token = getVideoAccessToken();
+  if (!token) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+};
+
+const apiFetch = (url, options = {}) =>
+  fetch(withVideoAuth(url), { credentials: "same-origin", ...options });
+
+const bindClick = (id, handler) => {
+  const el = $(id);
+  if (el) el.addEventListener("click", handler);
+};
+
+const bindChange = (id, handler) => {
+  const el = $(id);
+  if (el) el.addEventListener("change", handler);
+};
 
 /** Origin-absolute URL do pliku w public/ (niezależnie od ścieżki panelu). */
 const publicAssetUrl = (relativePath) => {
@@ -1224,8 +1266,17 @@ const renderProjectsDashboard = () => {
   renderVideoLibrary();
 
   if (!videoProjects.length) {
-    list.innerHTML =
-      '<div class="empty">Nie masz jeszcze żadnych projektów wideo. Kliknij „Nowy projekt wideo”.</div>';
+    list.innerHTML = `
+      <div class="empty">
+        <p>Nie widać projektów dla tego konta.</p>
+        <p class="hint">Projekt może być na dysku pod innym userId po resecie bazy.</p>
+        <button type="button" class="btn btn-secondary" id="sync-projects-from-disk">
+          Odzyskaj projekty z dysku
+        </button>
+      </div>`;
+    $("sync-projects-from-disk")?.addEventListener("click", () => {
+      void syncVideoProjectsFromDisk();
+    });
     return;
   }
 
@@ -1268,18 +1319,78 @@ const renderProjectsDashboard = () => {
   });
 };
 
-const loadVideoProjects = async () => {
-  const res = await fetch("/api/video-projects");
+const syncVideoProjectsFromDisk = async () => {
+  const errorEl = $("projects-error");
+  if (errorEl) {
+    errorEl.hidden = false;
+    errorEl.textContent = "Szukam projektów na dysku…";
+  }
+  const res = await apiFetch("/api/video-projects/sync-from-disk", {
+    method: "POST",
+    credentials: "same-origin",
+  });
   const data = await res.json();
   if (!res.ok) {
+    if (res.status === 401) {
+      handleVideoAuthFailure(data.error ?? "Sesja wygasła.");
+    }
+    throw new Error(data.error ?? "Nie udało się odzyskać projektów z dysku.");
+  }
+  videoProjects = data.projects ?? [];
+  if (errorEl) {
+    errorEl.hidden = videoProjects.length > 0;
+    errorEl.textContent =
+      videoProjects.length > 0
+        ? ""
+        : "Na dysku nie znaleziono projektów do przypisania do tego konta.";
+  }
+  renderProjectsDashboard();
+};
+
+const handleVideoAuthFailure = (message) => {
+  clearVideoAccessToken();
+  const hub =
+    $("hub-link")?.getAttribute("href")?.trim() || "http://localhost:3010/hub";
+  throw new Error(
+    `${message} Otwórz ponownie: ${hub} → Videoprezentacja (Ctrl+F5).`,
+  );
+};
+
+const loadVideoProjects = async () => {
+  if (!getVideoAccessToken()) {
+    handleVideoAuthFailure("Brak tokenu sesji wideo.");
+  }
+
+  const res = await apiFetch("/api/video-projects", { credentials: "same-origin" });
+  const data = await res.json();
+  if (!res.ok) {
+    if (res.status === 401) {
+      handleVideoAuthFailure(data.error ?? "Sesja wygasła.");
+    }
     throw new Error(data.error ?? "Nie udało się wczytać projektów wideo.");
   }
   videoProjects = data.projects ?? [];
+  if (videoProjects.length === 0) {
+    try {
+      await syncVideoProjectsFromDisk();
+    } catch (syncError) {
+      const errorEl = $("projects-error");
+      if (errorEl) {
+        errorEl.hidden = false;
+        errorEl.textContent =
+          syncError instanceof Error
+            ? syncError.message
+            : "Nie udało się odzyskać projektów z dysku.";
+      }
+      renderProjectsDashboard();
+    }
+    return;
+  }
   renderProjectsDashboard();
 };
 
 const createVideoProject = async () => {
-  const res = await fetch("/api/video-projects", {
+  const res = await apiFetch("/api/video-projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
@@ -1390,8 +1501,8 @@ const buildManifestFromEditor = () => {
     generatedAt: persistedManifestMeta?.generatedAt ?? new Date().toISOString(),
     generatedBy: persistedManifestMeta?.generatedBy ?? "heuristic",
     fps: persistedManifestMeta?.fps ?? 30,
-    width: persistedManifestMeta?.width ?? 1280,
-    height: persistedManifestMeta?.height ?? 720,
+    width: persistedManifestMeta?.width ?? 1920,
+    height: persistedManifestMeta?.height ?? 1080,
     slideDuration: persistedManifestMeta?.slideDuration ?? 90,
     transitionDuration: persistedManifestMeta?.transitionDuration ?? 20,
     kenBurns: persistedManifestMeta?.kenBurns ?? true,
@@ -1431,7 +1542,7 @@ const saveCurrentProjectDraft = async () => {
 
   const current = videoProjects.find((item) => item.id === activeProjectId);
   if (current && current.name !== name) {
-    const renameRes = await fetch(`/api/video-projects/${encodeURIComponent(activeProjectId)}`, {
+    const renameRes = await apiFetch(`/api/video-projects/${encodeURIComponent(activeProjectId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
@@ -1450,7 +1561,7 @@ const saveCurrentProjectDraft = async () => {
   }
 
   const manifest = buildManifestFromEditor();
-  const res = await fetch(`/api/video-projects/${encodeURIComponent(activeProjectId)}/manifest`, {
+  const res = await apiFetch(`/api/video-projects/${encodeURIComponent(activeProjectId)}/manifest`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(manifest),
@@ -1565,7 +1676,7 @@ const openProject = async (projectId, options = {}) => {
   setSaveProjectStatus("");
 
   await loadAudioLibrary();
-  const res = await fetch(`/api/project?projectId=${encodeURIComponent(projectId)}`);
+  const res = await apiFetch(`/api/project?projectId=${encodeURIComponent(projectId)}`);
   if (res.ok) {
     applyManifestToEditor(await res.json());
     return;
@@ -1579,6 +1690,7 @@ const openDeleteProjectModal = (project) => {
   deleteProjectTarget = { id: project.id, name: project.name };
   $("project-delete-text").textContent = `Na pewno usunąć projekt „${project.name}”? Tej operacji nie cofniesz.`;
   const modal = $("project-delete-modal");
+  if (!modal) return;
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
 };
@@ -1586,13 +1698,14 @@ const openDeleteProjectModal = (project) => {
 const closeDeleteProjectModal = () => {
   deleteProjectTarget = null;
   const modal = $("project-delete-modal");
+  if (!modal) return;
   modal.hidden = true;
   modal.setAttribute("aria-hidden", "true");
 };
 
 const confirmDeleteProject = async () => {
   if (!deleteProjectTarget) return;
-  const res = await fetch(`/api/video-projects/${encodeURIComponent(deleteProjectTarget.id)}`, {
+  const res = await apiFetch(`/api/video-projects/${encodeURIComponent(deleteProjectTarget.id)}`, {
     method: "DELETE",
   });
   const data = await res.json();
@@ -1846,8 +1959,10 @@ const renderLocationSelect = (slide, id = "") => {
 const closeSlideModal = () => {
   editingSlideIndex = null;
   const modal = $("slide-modal");
-  modal.hidden = true;
-  modal.setAttribute("aria-hidden", "true");
+  if (modal) {
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+  }
   document.body.style.overflow = "";
 };
 
@@ -1883,6 +1998,7 @@ const updateSlideTileInGrid = (index) => {
 const renderSlideModal = () => {
   const body = $("slide-modal-body");
   const titleEl = $("slide-modal-title");
+  if (!body || !titleEl) return;
   if (editingSlideIndex == null || !slides[editingSlideIndex]) {
     closeSlideModal();
     return;
@@ -2014,6 +2130,7 @@ const openSlideModal = (index) => {
   if (!slides[index]) return;
   editingSlideIndex = index;
   const modal = $("slide-modal");
+  if (!modal) return;
   modal.hidden = false;
   modal.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
@@ -2197,7 +2314,7 @@ const uploadImages = async (files, location = "") => {
         ? "wnętrze"
         : "obrazki";
   setStatus(`Wgrywam ${label}...`);
-  const res = await fetch("/api/upload/images", { method: "POST", body: form });
+  const res = await apiFetch("/api/upload/images", { method: "POST", body: form });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Upload failed");
 
@@ -2215,7 +2332,7 @@ const uploadAudio = async (file) => {
   setAudioAnalysisPending(true);
   setStatus("Wgrywam i analizuję beaty...");
   try {
-    const res = await fetch("/api/upload/audio", { method: "POST", body: form });
+    const res = await apiFetch("/api/upload/audio", { method: "POST", body: form });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error ?? "Upload failed");
 
@@ -2248,7 +2365,7 @@ const loadProject = async () => {
     return;
   }
   try {
-    const res = await fetch(`/api/project?projectId=${encodeURIComponent(activeProjectId)}`);
+    const res = await apiFetch(`/api/project?projectId=${encodeURIComponent(activeProjectId)}`);
     if (!res.ok) {
       $("manifest-preview").textContent =
         res.status === 404
@@ -2267,7 +2384,7 @@ const loadProject = async () => {
 };
 
 const loadHealth = async () => {
-  const res = await fetch("/api/health");
+  const res = await apiFetch("/api/health");
   const data = await res.json();
 
   if (data.hubUrl) {
@@ -2310,7 +2427,7 @@ const loadSessionUser = async () => {
   if (!emailEl || !logoutForm) return;
 
   try {
-    const res = await fetch("/api/me");
+    const res = await apiFetch("/api/me");
     if (!res.ok) {
       emailEl.textContent = "";
       return;
@@ -2326,10 +2443,11 @@ const loadSessionUser = async () => {
   logoutForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
-      await fetch("/api/logout", { method: "POST" });
+      await apiFetch("/api/logout", { method: "POST" });
     } catch {
       // cookie wygasnie po wylogowaniu z NextAuth
     }
+    sessionStorage.removeItem("videoAccessToken");
     logoutForm.submit();
   });
 };
@@ -2358,7 +2476,7 @@ const generateDescriptions = async () => {
   setDescriptionsStatus("Generuję opisy slajdów...");
 
   try {
-    const res = await fetch("/api/generate-descriptions", {
+    const res = await apiFetch("/api/generate-descriptions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2420,7 +2538,7 @@ const setExportProgressUi = ({ visible, percent = 0, label = "" } = {}) => {
 
 const waitForExportJob = async (projectId, jobId) => {
   for (;;) {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/video-projects/${encodeURIComponent(projectId)}/export/${encodeURIComponent(jobId)}`,
     );
     const data = await parseApiResponse(res, "Nie udało się sprawdzić postępu renderu.");
@@ -2492,13 +2610,28 @@ const saveVideoBlobLocally = async (blob, target) => {
   }
 
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = target.suggestedName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = target.suggestedName;
+    link.rel = "noopener";
+    link.style.display = "none";
+    const root = document.body ?? document.documentElement;
+    if (!root) {
+      throw new Error("Nie udało się przygotować pobierania pliku.");
+    }
+    root.appendChild(link);
+    if (typeof link.click === "function") {
+      link.click();
+    } else {
+      link.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, view: window }),
+      );
+    }
+    link.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 };
 
 const exportVideoToDisk = async () => {
@@ -2535,7 +2668,7 @@ const exportVideoToDisk = async () => {
     await saveCurrentProjectDraft();
 
     setExportStatus("Uruchamiam render wideo…");
-    const startRes = await fetch(
+    const startRes = await apiFetch(
       `/api/video-projects/${encodeURIComponent(activeProjectId)}/export`,
       { method: "POST" },
     );
@@ -2545,7 +2678,7 @@ const exportVideoToDisk = async () => {
     setExportStatus("Pobieram plik MP4…");
     setExportProgressUi({ visible: true, percent: 100, label: "Pobieram plik MP4…" });
 
-    const fileRes = await fetch(
+    const fileRes = await apiFetch(
       `/api/video-projects/${encodeURIComponent(activeProjectId)}/export/${encodeURIComponent(startData.jobId)}/file`,
     );
     if (!fileRes.ok) {
@@ -2585,11 +2718,12 @@ const generate = async () => {
     return;
   }
 
-  $("generate-btn").disabled = true;
+  const btn = $("generate-btn");
+  if (btn) btn.disabled = true;
 
   if (!slides.length) {
     setStatus("Dodaj zdjęcia slajdów przed generowaniem.", "err");
-    $("generate-btn").disabled = false;
+    if (btn) btn.disabled = false;
     return;
   }
 
@@ -2597,7 +2731,7 @@ const generate = async () => {
 
   try {
     const bpmValue = $("bpm").value.trim();
-    const res = await fetch("/api/generate", {
+    const res = await apiFetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2675,13 +2809,14 @@ const generate = async () => {
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Błąd", "err");
   } finally {
-    $("generate-btn").disabled = false;
+    if (btn) btn.disabled = false;
   }
 };
 
 const setupDropzone = (elementId, inputId, onFiles) => {
   const zone = $(elementId);
   const input = $(inputId);
+  if (!zone || !input) return;
 
   zone.addEventListener("dragover", (e) => {
     e.preventDefault();
@@ -2739,9 +2874,9 @@ $("audio-select")?.addEventListener("change", async (event) => {
   await applyAudioTrack(path);
 });
 
-$("generate-btn").addEventListener("click", generate);
-$("export-video-btn")?.addEventListener("click", exportVideoToDisk);
-$("generate-descriptions-btn")?.addEventListener("click", generateDescriptions);
+bindClick("generate-btn", generate);
+bindClick("export-video-btn", exportVideoToDisk);
+bindClick("generate-descriptions-btn", generateDescriptions);
 
 $("slides-section-toggle")?.addEventListener("click", () => {
   const toggle = $("slides-section-toggle");
@@ -2755,7 +2890,7 @@ document.querySelectorAll(".chip").forEach((chip) => {
   });
 });
 
-$("sync-mode").addEventListener("change", () => {
+bindChange("sync-mode", () => {
   invalidateDerivedTiming();
   updateAudioMeta();
 });
@@ -2908,6 +3043,7 @@ document.querySelectorAll("[data-project-modal-close]").forEach((el) => {
 });
 
 const initPanel = async () => {
+  persistVideoAccessToken();
   updateEffectsSummary();
   await loadHealth();
   await loadSessionUser();

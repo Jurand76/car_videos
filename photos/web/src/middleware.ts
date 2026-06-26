@@ -9,8 +9,9 @@ export default auth((req) => {
     return NextResponse.redirect(login);
   }
 
+  const protectedPanels = ["/video", "/service"];
   if (
-    req.nextUrl.pathname === "/video" &&
+    protectedPanels.includes(req.nextUrl.pathname) &&
     !req.nextUrl.searchParams.has("token") &&
     typeof req.auth.accessToken === "string"
   ) {
@@ -21,5 +22,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/hub", "/dashboard/:path*", "/video"],
+  matcher: ["/hub", "/dashboard/:path*", "/video", "/service"],
 };

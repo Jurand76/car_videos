@@ -44,7 +44,11 @@
     "dev:all": "node scripts/check-dev-ports.js && concurrently -n api,photos,studio,gateway -c yellow,cyan,blue,magenta \"npm run dev:photos:api\" \"npm run dev:photos:web\" \"npm run dev:studio\" \"npm run dev:gateway\"",
     "build": "remotion bundle",
     "upgrade": "remotion upgrade",
-    "lint": "eslint src && tsc"
+    "lint": "eslint src && tsc",
+    "setup:nvenc": "node scripts/setup-nvenc-ffmpeg.js",
+    "check:nvenc": "node scripts/check-nvenc.js",
+    "video:scan": "node scripts/list-video-projects-on-disk.js",
+    "postinstall": "node scripts/patch-remotion-content-length.js && node scripts/patch-remotion-node-env.js && node scripts/patch-remotion-process-update.js && node scripts/patch-remotion-index-html.js"
   },
   "sideEffects": [
     "*.css"

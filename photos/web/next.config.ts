@@ -15,6 +15,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/video", destination: `${gatewayUrl}/video` },
       { source: "/video/:path*", destination: `${gatewayUrl}/video/:path*` },
+      { source: "/service", destination: `${gatewayUrl}/service` },
+      { source: "/service/:path*", destination: `${gatewayUrl}/service/:path*` },
       { source: "/api/health", destination: `${gatewayUrl}/api/health` },
       { source: "/api/me", destination: `${gatewayUrl}/api/me` },
       { source: "/api/logout", destination: `${gatewayUrl}/api/logout` },

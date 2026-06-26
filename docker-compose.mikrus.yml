@@ -79,6 +79,9 @@ services:
       - project.env
     environment:
       PORT: 4000
+      REMOTION_GPU_RENDER: "0"
+      REMOTION_HARDWARE_ACCELERATION: "disabled"
+      REMOTION_RENDER_PROFILE: "fast"
       PHOTOS_WEB_URL: ${WEB_URL:?Ustaw WEB_URL w project.env}
       PHOTOS_API_URL: http://api:8000
       HUB_URL: ${WEB_URL}/hub
@@ -100,10 +103,13 @@ services:
     restart: unless-stopped
     ports:
       - "${STUDIO_PORT:-40463}:3000"
+    environment:
+      NODE_ENV: development
+      REMOTION_STUDIO_VPS: "1"
     volumes:
       - gateway_generated:/app/generated
       - gateway_public:/app/public
-    command: ["npx", "remotion", "studio", "--ipv4", "--port", "3000"]
+    command: ["/usr/local/bin/studio-entrypoint.sh"]
     networks:
       - internal
 

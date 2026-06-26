@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { ProductHubCards } from "@/components/product-hub-cards";
+import { getServicePanelUrl } from "@/lib/service-panel";
 import { getVideoPanelUrl } from "@/lib/video-panel";
 
 export default async function HubPage() {
@@ -27,6 +28,7 @@ export default async function HubPage() {
       <ProductHubCards
         photosHref="/dashboard"
         videoHref={getVideoPanelUrl(session.accessToken)}
+        serviceHref={getServicePanelUrl(session.accessToken)}
       />
     </div>
   );
