@@ -75,6 +75,9 @@ async def create_repair(
         mileage_at_repair=payload.mileage_at_repair,
         notes=payload.notes,
     )
+    # Nadaj kolejny numer zlecenia (max + 1). Brak numerrów -> 1.
+    max_no = (await db.execute(select(func.coalesce(func.max(Repair.number), 0)))).scalar_one()
+    repair.number = int(max_no) + 1
     db.add(repair)
     await db.commit()
     await db.refresh(repair)

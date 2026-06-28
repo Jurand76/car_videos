@@ -7,14 +7,16 @@
     <link rel="stylesheet" href="/service/styles.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a class="site-brand" href="/hub">AUTKA.PL</a>
-        <nav class="site-nav">
-          <a href="/hub">Start</a>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="/hub" data-auth-link="/hub">AUTKA.PL</a>
+        <nav class="topnav">
+          <a href="/hub" data-auth-link="/hub">Start</a>
           <a href="http://localhost:3010/dashboard">Zdjęcia</a>
-          <a href="/video">Wideo</a>
-          <span class="site-nav-active">Serwis</span>
+          <a href="/video" data-auth-link="/video">Wideo</a>
+          <span class="topnav-active">Serwis</span>
+          <span id="user-email" class="nav-user-email"></span>
+          <button id="logout-btn" type="button" class="nav-logout-btn">Wyloguj</button>
         </nav>
       </div>
     </header>
@@ -60,9 +62,10 @@
       <!-- ============ WIDOK: KLIENT ============ -->
       <section id="view-customers" class="view" hidden>
         <header class="view-head">
-          <button class="btn btn-ghost" data-back="home">← Wróć</button>
-          <h1 class="view-title">Klienci</h1>
-          <button class="btn btn-primary" data-action="customer-new">+ Nowy klient</button>
+          <div class="view-head-row">
+            <h1 class="view-title">Klienci</h1>
+            <button class="btn btn-primary" data-action="customer-new">+ Nowy klient</button>
+          </div>
         </header>
 
         <div class="toolbar">
@@ -75,9 +78,10 @@
       <!-- ============ WIDOK: SAMOCHODY ============ -->
       <section id="view-cars" class="view" hidden>
         <header class="view-head">
-          <button class="btn btn-ghost" data-back="home">← Wróć</button>
-          <h1 class="view-title">Samochody</h1>
-          <button class="btn btn-primary" data-action="car-new">+ Nowy samochód</button>
+          <div class="view-head-row">
+            <h1 class="view-title">Samochody</h1>
+            <button class="btn btn-primary" data-action="car-new">+ Nowy samochód</button>
+          </div>
         </header>
 
         <div class="toolbar">
@@ -90,9 +94,10 @@
       <!-- ============ WIDOK: USŁUGI (naprawy) ============ -->
       <section id="view-repairs" class="view" hidden>
         <header class="view-head">
-          <button class="btn btn-ghost" data-back="home">← Wróć</button>
-          <h1 class="view-title">Usługi</h1>
-          <button class="btn btn-primary" data-action="repair-new">+ Nowa naprawa</button>
+          <div class="view-head-row">
+            <h1 class="view-title">Usługi</h1>
+            <button class="btn btn-primary" data-action="repair-new">+ Nowa naprawa</button>
+          </div>
         </header>
 
         <div class="toolbar">
@@ -117,6 +122,9 @@
       <!-- ============ TOAST ============ -->
       <div id="toast" class="toast" hidden></div>
     </main>
+
+    <!-- ============ OBSZAR WYDRUKU (podgląd zlecenia) ============ -->
+    <div id="print-root" class="print-root" hidden></div>
 
     <script src="/service/app.js"></script>
   </body>
