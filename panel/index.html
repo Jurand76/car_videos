@@ -8,18 +8,16 @@
     <link rel="stylesheet" href="/video/graphic-effect-previews.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="site-header-inner">
-        <a id="hub-link" class="site-brand" href="/hub">AUTKA.PL</a>
-        <nav class="site-nav">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a id="hub-link" class="brand" href="/hub">AUTKA.PL</a>
+        <nav class="topnav">
           <a id="hub-home-link" href="/hub">Start</a>
           <a id="photos-link" href="/dashboard">Zdjęcia</a>
-          <span class="site-nav-active">Wideo</span>
-          <span id="user-email" class="site-user-email"></span>
-          <form id="logout-form" class="site-logout-form" method="post" action="/api/auth/signout">
-            <input type="hidden" name="callbackUrl" value="/login" />
-            <button type="submit" class="btn btn-secondary btn-header">Wyloguj</button>
-          </form>
+          <span class="topnav-active">Wideo</span>
+          <a href="/service" id="service-link">Serwis</a>
+          <span id="user-email" class="nav-user-email"></span>
+          <button id="logout-btn" type="button" class="nav-logout-btn">Wyloguj</button>
         </nav>
       </div>
     </header>

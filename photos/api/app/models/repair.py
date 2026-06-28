@@ -12,6 +12,7 @@ class Repair(Base):
     __tablename__ = "repairs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    number: Mapped[int | None] = mapped_column(Integer, unique=True, index=True)
     car_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cars.id", ondelete="CASCADE"), index=True, nullable=False
     )

@@ -263,6 +263,7 @@ class RepairResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    number: int | None = None
     car_id: uuid.UUID
     staff_id: uuid.UUID | None
     received_at: datetime
@@ -282,6 +283,7 @@ class RepairListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    number: int | None = None
     car_id: uuid.UUID
     staff_id: uuid.UUID | None
     received_at: datetime

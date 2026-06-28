@@ -36,28 +36,78 @@ body {
   min-height: 100vh;
 }
 
-.site-header {
+/* ──────────── Header (spójny z hub i zdjęciami) ──────────── */
+.topbar {
   border-bottom: 1px solid var(--border);
   background: var(--card);
 }
 
-.site-header-inner {
+.topbar-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   max-width: var(--page-max-width);
   margin: 0 auto;
-  padding: 1rem var(--page-padding-x);
+  padding: 16px var(--page-padding-x);
 }
 
-.site-brand {
+.brand {
   flex-shrink: 0;
   font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  font-weight: 600;
   color: var(--text);
   text-decoration: none;
+}
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.topnav a {
+  font-size: 0.875rem;
+  color: #64748b;
+  text-decoration: none;
+}
+
+.topnav a:hover {
+  color: var(--text);
+}
+
+.topnav-active {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.nav-user-email {
+  font-size: 0.875rem;
+  color: var(--muted-light);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-logout-btn {
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted-light);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.nav-logout-btn:hover {
+  color: var(--text);
+  border-color: #cbd5e1;
+}
 }
 
 .site-nav {

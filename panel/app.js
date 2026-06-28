@@ -2396,6 +2396,16 @@ const loadHealth = async () => {
     $("photos-link")?.setAttribute("href", data.photosUrl);
   }
 
+  // Link do Serwisu (z tokenem jak hub i zdjęcia)
+  const token = getVideoAccessToken();
+  if (token) {
+    const serviceLink = $("service-link");
+    if (serviceLink) serviceLink.href = `/service?token=${encodeURIComponent(token)}`;
+  }
+
+  // Zachowaj URL wylogowania dla logout-btn
+  logoutUrl = data.signOutUrl;
+
   if (data.studioUrl) {
     const studioLink = $("studio-link");
     if (studioLink) {
@@ -2421,10 +2431,12 @@ const loadHealth = async () => {
   return data;
 };
 
+let logoutUrl = "";
+
 const loadSessionUser = async () => {
   const emailEl = $("user-email");
-  const logoutForm = $("logout-form");
-  if (!emailEl || !logoutForm) return;
+  const logoutBtn = $("logout-btn");
+  if (!emailEl) return;
 
   try {
     const res = await apiFetch("/api/me");
@@ -2434,22 +2446,23 @@ const loadSessionUser = async () => {
     }
     const data = await res.json();
     const user = data.user;
-    emailEl.textContent = user?.name?.trim() || user?.email || "";
+    emailEl.textContent = user?.email || "";
     emailEl.title = user?.email ?? "";
   } catch {
     emailEl.textContent = "";
   }
 
-  logoutForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    try {
-      await apiFetch("/api/logout", { method: "POST" });
-    } catch {
-      // cookie wygasnie po wylogowaniu z NextAuth
-    }
-    sessionStorage.removeItem("videoAccessToken");
-    logoutForm.submit();
-  });
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      try {
+        await apiFetch("/api/logout", { method: "POST" });
+      } catch {
+        // cookie wygaśnie po wylogowaniu z NextAuth
+      }
+      sessionStorage.removeItem("videoAccessToken");
+      window.location.href = logoutUrl || "http://localhost:3010/login";
+    });
+  }
 };
 
 const generateDescriptions = async () => {

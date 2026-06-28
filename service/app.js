@@ -85,7 +85,7 @@ function esc(s) {
 }
 
 /* ──────────── Nawigacja widoków ──────────── */
-function showView(name) {
+function showView(name, push = true) {
   $$(".view").forEach((v) => (v.hidden = true));
   const view = $(`#view-${name}`);
   if (view) view.hidden = false;
@@ -93,7 +93,13 @@ function showView(name) {
   if (name === "customers") loadCustomers();
   if (name === "cars") loadCars();
   if (name === "repairs") loadRepairs();
+  if (push) history.pushState({ view: name }, "", `#${name}`);
 }
+
+window.addEventListener("popstate", (e) => {
+  const view = e.state?.view || "home";
+  showView(view, false);
+});
 
 /* ──────────── Liczniki na kafelkach ──────────── */
 async function refreshCounts() {
@@ -232,6 +238,7 @@ function renderRepairs(items) {
       <div class="list-item-main">
         <p class="list-item-title">${car ? `${esc(car.make)} ${esc(car.model)} (${esc(car.plate)})` : "Auto usunięte"}</p>
         <div class="list-item-meta">
+          ${r.number != null ? `<span class="badge badge-kind">ZS/${esc(String(r.number).padStart(4, "0"))}</span>` : ""}
           <span class="badge badge-${r.status}">${statusLabel(r.status)}</span>
           <span>📅 Przyjęto: ${fmtDate(r.received_at)}</span>
           ${r.completed_at ? `<span>✓ Zakończono: ${fmtDate(r.completed_at)}</span>` : ""}
@@ -239,8 +246,9 @@ function renderRepairs(items) {
         </div>
       </div>
       <div class="list-item-actions">
-        <button class="btn btn-ghost btn-sm" data-edit-repair="${r.id}">Edytuj</button>
-        <button class="btn btn-danger btn-sm" data-del-repair="${r.id}">Usuń</button>
+        <button class="btn btn-row" data-preview-repair="${r.id}">Podgląd</button>
+        <button class="btn btn-row" data-edit-repair="${r.id}">Edytuj</button>
+        <button class="btn btn-row btn-row-danger" data-del-repair="${r.id}">Usuń</button>
       </div>
     </div>`;
   }).join("");
@@ -249,8 +257,10 @@ function renderRepairs(items) {
 /* ═══════════════════════════════════════════════
    FORMULARZE (w modalach)
    ═══════════════════════════════════════════════ */
-function openModal(title, html, onSubmit) {
+function openModal(title, html, onSubmit, options = {}) {
   $("#modal-title").textContent = title;
+  const modalEl = document.querySelector("#modal-root .modal");
+  modalEl.style.maxWidth = options.wide ? "820px" : "560px";
   $("#modal-body").innerHTML = html;
   $("#modal-root").hidden = false;
 
@@ -276,6 +286,8 @@ function openModal(title, html, onSubmit) {
 function closeModal() {
   $("#modal-root").hidden = true;
   $("#modal-body").innerHTML = "";
+  const modalEl = document.querySelector("#modal-root .modal");
+  if (modalEl) modalEl.style.maxWidth = "";
 }
 
 /* ──────────── Formularz klienta ──────────── */
@@ -446,8 +458,217 @@ function openCarForm(existing = null) {
 
 /* ──────────── Formularz naprawy ──────────── */
 let staffCache = [];
+let currentRepairItems = [];
 
-async function openRepairForm(existing = null) {
+function normalizeRepairItem(item = {}) {
+  return {
+    id: item.id || null,
+    kind: item.kind || "part",
+    name: item.name || "",
+    sku: item.sku || "",
+    quantity: item.quantity ?? 1,
+    unit: item.unit || "",
+    unit_price: item.unit_price ?? "",
+    purchase_price: item.purchase_price ?? "",
+    vat_rate: item.vat_rate ?? 23,
+    warranty_months: item.warranty_months ?? "",
+    sort_order: item.sort_order ?? 0,
+    __deleted: false,
+    __dirty: false,
+  };
+}
+
+function repairItemPayload(item) {
+  return {
+    kind: item.kind,
+    name: item.name,
+    sku: item.sku || null,
+    quantity: Number(item.quantity || 0),
+    unit: item.unit || null,
+    unit_price: Number(item.unit_price || 0),
+    purchase_price: item.purchase_price === "" || item.purchase_price == null ? null : Number(item.purchase_price),
+    vat_rate: Number(item.vat_rate || 23),
+    warranty_months: item.warranty_months === "" || item.warranty_months == null ? null : Number(item.warranty_months),
+    sort_order: Number(item.sort_order || 0),
+  };
+}
+
+function repairItemsTotals(items) {
+  let parts = 0;
+  let labor = 0;
+  let purchaseParts = 0;
+  let purchaseLabor = 0;
+  items.filter((item) => !item.__deleted).forEach((item) => {
+    const qty = Number(item.quantity || 0);
+    const total = qty * Number(item.unit_price || 0);
+    const purchase = qty * Number(item.purchase_price || 0);
+    if (item.kind === "part") {
+      parts += total;
+      purchaseParts += purchase;
+    } else {
+      labor += total;
+      purchaseLabor += purchase;
+    }
+  });
+  const purchase = purchaseParts + purchaseLabor;
+  return { parts, labor, grand: parts + labor, purchase, purchaseParts, purchaseLabor };
+}
+
+function renderRepairItemsMarkup(items) {
+  const totals = repairItemsTotals(items);
+  const visibleItems = items.filter((item) => !item.__deleted);
+  return `
+    <div class="items-section">
+      <div class="item-row item-row-header">
+        <span class="item-row-col-label">Rodzaj</span>
+        <span class="item-row-col-label">Nazwa</span>
+        <span class="item-row-col-label">Liczba sztuk</span>
+        <span class="item-row-col-label">Cena sprzedaży</span>
+        <span class="item-row-col-label">Cena zakupu</span>
+        <span class="item-row-col-label">Stawka VAT</span>
+        <span></span>
+      </div>
+      ${visibleItems.length ? visibleItems.map((item, index) => `
+        <div class="item-row" data-repair-item-index="${index}">
+          <select class="form-select repair-item-field" data-repair-item-index="${index}" data-repair-item-field="kind">
+            <option value="part" ${item.kind === "part" ? "selected" : ""}>Część</option>
+            <option value="service" ${item.kind === "service" ? "selected" : ""}>Robocizna</option>
+          </select>
+          <input class="form-input repair-item-field" data-repair-item-index="${index}" data-repair-item-field="name" placeholder="Nazwa" value="${esc(item.name || "")}" />
+          <input class="form-input repair-item-field" data-repair-item-index="${index}" data-repair-item-field="quantity" type="number" min="0" step="0.01" placeholder="Ilość" value="${esc(item.quantity ?? 1)}" />
+          <input class="form-input repair-item-field" data-repair-item-index="${index}" data-repair-item-field="unit_price" type="number" min="0" step="0.01" placeholder="Cena sprz." value="${esc(item.unit_price ?? "")}" />
+          <input class="form-input repair-item-field item-purchase" data-repair-item-index="${index}" data-repair-item-field="purchase_price" type="number" min="0" step="0.01" placeholder="Cena zakupu" value="${esc(item.kind === "service" ? (item.purchase_price ?? 0) : (item.purchase_price ?? ""))}" />
+          <select class="form-select repair-item-field" data-repair-item-index="${index}" data-repair-item-field="vat_rate">
+            <option value="0" ${item.vat_rate === 0 ? "selected" : ""}>0%</option>
+            <option value="8" ${item.vat_rate === 8 ? "selected" : ""}>8%</option>
+            <option value="23" ${item.vat_rate === 23 ? "selected" : ""}>23%</option>
+          </select>
+          <button type="button" class="btn btn-ghost btn-sm" data-repair-item-delete="${index}" title="Usuń">✕</button>
+        </div>
+      `).join("") : `<div class="form-hint">Brak pozycji — dodaj część lub robociznę.</div>`}
+      <div class="items-head">
+        <button type="button" class="btn btn-ghost btn-sm" data-repair-item-add>+ Dodaj pozycję</button>
+      </div>
+      <div class="items-totals">
+        <span>Części: <strong>${fmtMoney(totals.parts)}</strong></span>
+        <span>Robocizna: <strong>${fmtMoney(totals.labor)}</strong></span>
+        <span>Razem: <strong>${fmtMoney(totals.grand)}</strong></span>
+      </div>
+      ${totals.purchase > 0 ? `
+      <div class="items-purchase-total">
+        <span>Koszt zakupu części: <strong>${fmtMoney(totals.purchaseParts)}</strong></span>
+        <span>Koszt robocizny: <strong>${fmtMoney(totals.purchaseLabor)}</strong></span>
+        <span>Razem: <strong>${fmtMoney(totals.purchase)}</strong></span>
+        <span>Marża: <strong style="color: var(--green)">${fmtMoney(totals.grand - totals.purchase)}</strong></span>
+      </div>` : ""}
+    </div>
+  `;
+}
+
+function renderRepairItemsContainer() {
+  const container = document.getElementById("repair-items-container");
+  if (!container) return;
+  container.innerHTML = renderRepairItemsMarkup(currentRepairItems);
+}
+
+function refreshRepairItemsTotalsOnly() {
+  const totals = repairItemsTotals(currentRepairItems);
+  document.querySelectorAll(".items-totals").forEach((el) => {
+    el.innerHTML = `
+      <span>Części: <strong>${fmtMoney(totals.parts)}</strong></span>
+      <span>Robocizna: <strong>${fmtMoney(totals.labor)}</strong></span>
+      <span>Razem: <strong>${fmtMoney(totals.grand)}</strong></span>
+    `;
+  });
+  document.querySelectorAll(".items-purchase-total").forEach((el) => {
+    el.innerHTML = `
+      <span>Koszt zakupu części: <strong>${fmtMoney(totals.purchaseParts)}</strong></span>
+      <span>Koszt robocizny: <strong>${fmtMoney(totals.purchaseLabor)}</strong></span>
+      <span>Razem: <strong>${fmtMoney(totals.purchase)}</strong></span>
+      <span>Marża: <strong style="color: var(--green)">${fmtMoney(totals.grand - totals.purchase)}</strong></span>
+    `;
+  });
+}
+
+function updateRepairItemField(index, field, value) {
+  if (!currentRepairItems[index]) return;
+  currentRepairItems[index][field] = value;
+  currentRepairItems[index].__dirty = true;
+  // Odśwież tylko sumy — NIE przebudowuj HTML, żeby nie zgubić focus.
+  refreshRepairItemsTotalsOnly();
+}
+
+async function syncRepairItems(repairId, items) {
+  const created = items.filter((item) => !item.__deleted && !item.id);
+  const updated = items.filter((item) => !item.__deleted && item.id && item.__dirty);
+  const deleted = items.filter((item) => item.__deleted && item.id);
+
+  for (const item of created) {
+    await api("POST", `/api/v1/service/repairs/${repairId}/items`, repairItemPayload(item));
+  }
+  for (const item of updated) {
+    await api("PATCH", `/api/v1/service/repairs/${repairId}/items/${item.id}`, repairItemPayload(item));
+  }
+  for (const item of deleted) {
+    await api("DELETE", `/api/v1/service/repairs/${repairId}/items/${item.id}`);
+  }
+}
+
+/* ──────────── Backup stanu formularza do powrotu po modalu pozycji ──────────── */
+let repairFormBackup = null;
+
+function captureRepairFormState() {
+  const form = document.querySelector("#modal-body form");
+  if (!form) return null;
+  const fd = new FormData(form);
+  return Object.fromEntries(fd.entries());
+}
+
+async function openItemsModal(repairId) {
+  // Zachowaj stan bieżącego formularza
+  repairFormBackup = { repairId, data: captureRepairFormState() };
+
+  try {
+    const repair = await api("GET", `/api/v1/service/repairs/${repairId}`);
+    currentRepairItems = (repair.items || []).map((item) => normalizeRepairItem(item));
+  } catch (e) {
+    toast("Nie udało się pobrać pozycji: " + e.message);
+    repairFormBackup = null;
+    return;
+  }
+
+  const html = `
+    <form class="form-grid">
+      <div class="form-error" hidden></div>
+      <div id="repair-items-container" class="form-group full"></div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-repair-items-cancel>Anuluj</button>
+        <button type="submit" class="btn btn-primary">Zapisz pozycje</button>
+      </div>
+    </form>`;
+
+  openModal("Pozycje zlecenia", html, async () => {
+    await syncRepairItems(repairId, currentRepairItems);
+    toast("Pozycje zapisane");
+    await reopenRepairFormFromBackup();
+  }, { wide: true });
+
+  renderRepairItemsContainer();
+}
+
+async function reopenRepairFormFromBackup() {
+  if (!repairFormBackup) return;
+  const { repairId, data } = repairFormBackup;
+  repairFormBackup = null;
+  try {
+    const repair = await api("GET", `/api/v1/service/repairs/${repairId}`);
+    await openRepairForm(repair, data);
+  } catch (e) {
+    toast("Błąd: " + e.message);
+  }
+}
+
+async function openRepairForm(existing = null, formDataOverride = null) {
   // doładuj zależności
   try {
     if (!carsCache.length) carsCache = await api("GET", "/api/v1/service/cars");
@@ -458,12 +679,32 @@ async function openRepairForm(existing = null) {
     toast("Najpierw dodaj samochód");
     return;
   }
-  const r = existing || {};
+
+  const repairData = existing || {};
+  const r = formDataOverride ? { ...repairData, ...formDataOverride } : repairData;
+  const defaultCarId = r.car_id || carsCache[0]?.id || "";
   const carOpts = carsCache.map((car) =>
-    `<option value="${car.id}" ${r.car_id === car.id ? "selected" : ""}>${esc(car.make)} ${esc(car.model)} (${esc(car.plate)})</option>`
+    `<option value="${car.id}" ${defaultCarId === car.id ? "selected" : ""}>${esc(car.make)} ${esc(car.model)} (${esc(car.plate)})</option>`
   ).join("");
   const staffOpts = `<option value="">— nieprzydzielone —</option>` +
     staffCache.map((s) => `<option value="${s.id}" ${r.staff_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("");
+  const selectedCar = carsCache.find((car) => car.id === defaultCarId);
+
+  // Wyłącznie przy edycji istniejącej naprawy pobieramy pełne dane (z opisami, notatkami itd.)
+  let repairTotals = { parts: 0, labor: 0, grand: 0 };
+  if (existing?.id) {
+    try {
+      const full = await api("GET", `/api/v1/service/repairs/${existing.id}`);
+      currentRepairItems = (full.items || []).map((item) => normalizeRepairItem(item));
+      repairTotals = repairItemsTotals(currentRepairItems);
+      // scal pełne dane z bazy z ewentualnym override (np. powrót z modala pozycji)
+      Object.assign(r, full, formDataOverride || {});
+    } catch {}
+  } else {
+    currentRepairItems = [];
+  }
+
+  const initialMileage = r.mileage_at_repair ?? selectedCar?.mileage ?? "";
 
   const html = `
     <form class="form-grid">
@@ -490,7 +731,7 @@ async function openRepairForm(existing = null) {
         </div>
         <div class="form-group">
           <label class="form-label">Przebieg (km)</label>
-          <input class="form-input" name="mileage_at_repair" type="number" min="0" value="${esc(r.mileage_at_repair ?? "")}" />
+          <input class="form-input" name="mileage_at_repair" type="number" min="0" value="${esc(initialMileage)}" />
         </div>
       </div>
       <div class="form-group full">
@@ -505,12 +746,43 @@ async function openRepairForm(existing = null) {
         <label class="form-label">Notatki</label>
         <textarea class="form-textarea" name="notes">${esc(r.notes || "")}</textarea>
       </div>
+      ${existing ? `
+      <div class="items-summary-card">
+        <h3 class="items-summary-heading">Rozliczenie</h3>
+        <div class="items-summary-grid">
+          <div class="items-summary-block">
+            <div class="items-summary-label">Przychód</div>
+            <div class="items-summary-totals">
+              <span>Części: <strong>${fmtMoney(repairTotals.parts)}</strong></span>
+              <span>Robocizna: <strong>${fmtMoney(repairTotals.labor)}</strong></span>
+              <span class="items-summary-grand">Razem: <strong>${fmtMoney(repairTotals.grand)}</strong></span>
+            </div>
+          </div>
+          <div class="items-summary-block">
+            <div class="items-summary-label">Koszty</div>
+            <div class="items-summary-totals">
+              <span>Części: <strong>${fmtMoney(repairTotals.purchaseParts)}</strong></span>
+              <span>Robocizna: <strong>${fmtMoney(repairTotals.purchaseLabor)}</strong></span>
+              <span class="items-summary-grand">Razem: <strong>${fmtMoney(repairTotals.purchase)}</strong></span>
+            </div>
+          </div>
+          <div class="items-summary-block items-summary-profit">
+            <div class="items-summary-label">Dochód</div>
+            <div class="items-summary-totals">
+              <span>Części: <strong>${fmtMoney(repairTotals.parts - repairTotals.purchaseParts)}</strong></span>
+              <span>Robocizna: <strong>${fmtMoney(repairTotals.labor - repairTotals.purchaseLabor)}</strong></span>
+              <span class="items-summary-grand">Razem: <strong>${fmtMoney(repairTotals.grand - repairTotals.purchase)}</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-primary btn-block" data-open-repair-items="${existing.id}">Pozycje zlecenia</button>
+      </div>` : `<p class="form-hint">Pozycje zlecenia dodasz po zapisaniu naprawy.</p>`}
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" data-modal-close>Anuluj</button>
         <button type="submit" class="btn btn-primary">Zapisz naprawę</button>
       </div>
-    </form>
-    ${existing ? `<p class="form-hint" style="margin-top:14px">Pozycje zlecenia (części/usługi) zarządzaj po otwarciu naprawy.</p>` : ""}`;
+    </form>`;
 
   openModal(existing ? "Edytuj naprawę" : "Nowa naprawa", html, async (fd) => {
     const data = Object.fromEntries(fd);
@@ -527,6 +799,198 @@ async function openRepairForm(existing = null) {
     }
     await loadRepairs();
     refreshCounts();
+  }, { wide: true });
+}
+
+/* ═══════════════════════════════════════════════
+   PODGLĄD ZLECENIA (do wydruku)
+   ═══════════════════════════════════════════════ */
+function vatGroupsForPreview(items) {
+  // Ceny w systemie są BRUTTO — wyciągamy VAT wstecz (backward VAT).
+  const map = {};
+  items.forEach((item) => {
+    const rate = Number(item.vat_rate ?? 23);
+    if (!map[rate]) map[rate] = { rate, net: 0, vat: 0, gross: 0 };
+    const qty = Number(item.quantity || 0);
+    const gross = qty * Number(item.unit_price || 0);
+    const net = gross / (1 + rate / 100);
+    const vat = gross - net;
+    map[rate].net += net;
+    map[rate].vat += vat;
+    map[rate].gross += gross;
+  });
+  return Object.values(map).sort((a, b) => a.rate - b.rate);
+}
+
+function repairPreviewHtml(repair, car, owner) {
+  const items = (repair.items || []).filter((it) => !it.__deleted);
+  // Ceny są BRUTTO — suma brutto to po prostu suma wartości pozycji.
+  const gross = items.reduce((s, it) => s + Number(it.quantity || 0) * Number(it.unit_price || 0), 0);
+  const vatGroups = vatGroupsForPreview(items);
+  const totalVat = vatGroups.reduce((s, g) => s + g.vat, 0);
+  const net = gross - totalVat;
+  const docNo = repair.number != null ? `ZS/${String(repair.number).padStart(4, "0")}` : "—";
+
+  return `
+  <div class="preview-doc preview-print-area">
+    <div class="preview-head">
+      <div>
+        <h3>Zlecenie serwisowe nr ${esc(docNo)}</h3>
+        <div class="preview-head-sub">
+          Status: ${esc(statusLabel(repair.status))} ·
+          Data przyjęcia: ${fmtDate(repair.received_at)}${repair.completed_at ? ` · Zakończenie: ${fmtDate(repair.completed_at)}` : ""}
+        </div>
+      </div>
+      <div class="preview-num">
+        ${esc(new Date().toLocaleDateString("pl-PL"))}
+        <span>Data wystawienia</span>
+      </div>
+    </div>
+
+    <div class="preview-grid">
+      <div class="preview-block">
+        <p class="preview-block-title">Właściciel pojazdu</p>
+        <div class="preview-block-row"><span>Nazwa:</span><strong>${esc(customerName(owner || {}))}</strong></div>
+        ${owner?.kind === "company" ? `<div class="preview-block-row"><span>NIP:</span>${esc(owner.tax_id || "—")}</div>` : ""}
+        <div class="preview-block-row"><span>Telefon:</span>${esc(owner?.phone || "—")}</div>
+        ${owner?.email ? `<div class="preview-block-row"><span>Email:</span>${esc(owner.email)}</div>` : ""}
+        ${owner?.address ? `<div class="preview-block-row"><span>Adres:</span>${esc(owner.address)}</div>` : ""}
+      </div>
+      <div class="preview-block">
+        <p class="preview-block-title">Dane pojazdu</p>
+        <div class="preview-block-row"><span>Marka / model:</span><strong>${esc(car?.make || "—")} ${esc(car?.model || "")}</strong></div>
+        <div class="preview-block-row"><span>Rok produkcji:</span>${esc(car?.year || "—")}</div>
+        <div class="preview-block-row"><span>Nr rejestr.:</span>${esc(car?.plate || "—")}</div>
+        ${car?.vin ? `<div class="preview-block-row"><span>VIN:</span>${esc(car.vin)}</div>` : ""}
+        ${car?.color ? `<div class="preview-block-row"><span>Kolor:</span>${esc(car.color)}</div>` : ""}
+        ${repair.mileage_at_repair != null ? `<div class="preview-block-row"><span>Przebieg:</span>${Number(repair.mileage_at_repair).toLocaleString("pl-PL")} km</div>` : (car?.mileage != null ? `<div class="preview-block-row"><span>Przebieg:</span>${car.mileage.toLocaleString("pl-PL")} km</div>` : "")}
+      </div>
+    </div>
+
+    ${(repair.fault_desc || repair.work_scope) ? `
+    <div class="preview-block" style="margin-bottom:16px;">
+      ${repair.fault_desc ? `<p class="preview-block-title">Opis usterki</p><div class="preview-block-row" style="display:block;white-space:pre-wrap;">${esc(repair.fault_desc)}</div>` : ""}
+      ${repair.work_scope ? `<p class="preview-block-title" style="margin-top:10px;">Zakres prac</p><div class="preview-block-row" style="display:block;white-space:pre-wrap;">${esc(repair.work_scope)}</div>` : ""}
+    </div>` : ""}
+
+    <div class="preview-table-wrap">
+      <table class="preview-table">
+        <thead>
+          <tr>
+            <th style="width:30px;">Lp.</th>
+            <th>Nazwa</th>
+            <th class="num">Ilość</th>
+            <th class="num">Cena jedn. brutto</th>
+            <th class="num">VAT</th>
+            <th class="num">Wartość brutto</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.length ? items.map((it, i) => {
+            const val = Number(it.quantity || 0) * Number(it.unit_price || 0);
+            return `<tr>
+              <td>${i + 1}</td>
+              <td>${esc(it.name || "—")}${it.sku ? `<br><span style="font-size:0.74rem;color:var(--muted);">SKU: ${esc(it.sku)}</span>` : ""}</td>
+              <td class="num">${esc(it.quantity ?? 0)} ${esc(it.unit || "")}</td>
+              <td class="num">${fmtMoney(it.unit_price || 0)}</td>
+              <td class="num">${Number(it.vat_rate ?? 23)}%</td>
+              <td class="num">${fmtMoney(val)}</td>
+            </tr>`;
+          }).join("") : `<tr><td colspan="6" style="text-align:center;color:var(--muted);">Brak pozycji</td></tr>`}
+        </tbody>
+        <tfoot class="preview-tfoot">
+          <tr>
+            <td colspan="5" style="text-align:right;">Razem do zapłaty (brutto):</td>
+            <td class="num">${fmtMoney(gross)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="preview-vat">
+      <p class="preview-vat-title">Wyszczególnienie stawek VAT (kwota VAT w cenie)</p>
+      <table class="preview-vat-table">
+        <thead>
+          <tr><th>Stawka VAT</th><th>Wartość netto</th><th>Kwota VAT</th><th>Wartość brutto</th></tr>
+        </thead>
+        <tbody>
+          ${vatGroups.map((g) => `<tr>
+            <td>${g.rate}%</td>
+            <td>${fmtMoney(g.net)}</td>
+            <td>${fmtMoney(g.vat)}</td>
+            <td>${fmtMoney(g.gross)}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="preview-sign">
+      <div class="preview-sign-box">
+        <div style="font-weight:600;color:var(--text);">Warsztat</div>
+        <div class="line">podpis / pieczątka</div>
+      </div>
+      <div class="preview-sign-box">
+        <div style="font-weight:600;color:var(--text);">Klient ${esc(customerName(owner || {}))}</div>
+        <div class="line">podpis / pieczątka</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function openRepairPreview(repair) {
+  // Pobierz pełne dane naprawy (z pozycjami) oraz powiązane auto i właściciela
+  let full, car, owner;
+  try {
+    full = await api("GET", `/api/v1/service/repairs/${repair.id}`);
+    if (!carsCache.length) carsCache = await api("GET", "/api/v1/service/cars");
+    car = carsCache.find((c) => c.id === full.car_id);
+    if (!customersCache.length) customersCache = await api("GET", "/api/v1/service/customers");
+    owner = customersCache.find((c) => c.id === car?.customer_id);
+  } catch (e) {
+    toast("Nie udało się pobrać danych zlecenia: " + e.message);
+    return;
+  }
+
+  const docHtml = repairPreviewHtml(full, car, owner);
+
+  // Zbuduj modal z podglądem i przyciskiem drukowania
+  const html = `
+    <div class="preview-print-area">
+      ${docHtml}
+      <div class="form-actions preview-actions" style="margin-top:18px;">
+        <button type="button" class="btn btn-ghost" data-modal-close>Zamknij</button>
+        <button type="button" class="btn btn-primary" data-print-repair>Drukuj / PDF</button>
+      </div>
+    </div>`;
+
+  // Najpierw ukryj duplikat w obszarze wydruku
+  const printRoot = $("#print-root");
+  printRoot.innerHTML = "";
+  printRoot.hidden = true;
+
+  openModal(`Podgląd zlecenia nr ${full.number != null ? "ZS/" + String(full.number).padStart(4, "0") : ""}`, html, null, { wide: true });
+}
+
+function doPrintRepair() {
+  const modalBody = $("#modal-body");
+  if (!modalBody) return;
+  const src = modalBody.querySelector(".preview-doc");
+  const printRoot = $("#print-root");
+  if (!src || !printRoot) {
+    window.print();
+    return;
+  }
+  // Skopiuj treść podglądu do obszaru wydruku
+  printRoot.innerHTML = src.outerHTML;
+  printRoot.hidden = false;
+  // Zamknij modal, aby nie był widoczny na wydruku
+  closeModal();
+  // Drukuj po odświeżeniu DOM
+  requestAnimationFrame(() => {
+    window.print();
+    // Po druku przywróć stan
+    printRoot.hidden = true;
+    printRoot.innerHTML = "";
   });
 }
 
@@ -543,13 +1007,6 @@ document.addEventListener("click", async (e) => {
     return;
   }
 
-  // Wróć
-  const backBtn = target.closest("[data-back]");
-  if (backBtn) {
-    showView(backBtn.dataset.back);
-    return;
-  }
-
   // Nowy (formularze)
   const actionBtn = target.closest("[data-action]");
   if (actionBtn) {
@@ -557,6 +1014,39 @@ document.addEventListener("click", async (e) => {
     if (a === "customer-new") openCustomerForm();
     if (a === "car-new") openCarForm();
     if (a === "repair-new") openRepairForm();
+    return;
+  }
+
+  const repairItemAdd = target.closest("[data-repair-item-add]");
+  if (repairItemAdd) {
+    currentRepairItems.push(normalizeRepairItem({}));
+    renderRepairItemsContainer();
+    return;
+  }
+
+  const repairItemDelete = target.closest("[data-repair-item-delete]");
+  if (repairItemDelete) {
+    const index = Number(repairItemDelete.dataset.repairItemDelete);
+    if (!Number.isNaN(index)) {
+      if (currentRepairItems[index]?.id) {
+        currentRepairItems[index].__deleted = true;
+      } else {
+        currentRepairItems.splice(index, 1);
+      }
+      renderRepairItemsContainer();
+    }
+    return;
+  }
+
+  const openItems = target.closest("[data-open-repair-items]");
+  if (openItems) {
+    await openItemsModal(openItems.dataset.openRepairItems);
+    return;
+  }
+
+  const cancelItems = target.closest("[data-repair-items-cancel]");
+  if (cancelItems) {
+    await reopenRepairFormFromBackup();
     return;
   }
 
@@ -577,6 +1067,17 @@ document.addEventListener("click", async (e) => {
   if (editRepair) {
     const r = repairsCache.find((x) => x.id === editRepair.dataset.editRepair);
     if (r) openRepairForm(r);
+    return;
+  }
+  const previewRepair = target.closest("[data-preview-repair]");
+  if (previewRepair) {
+    const r = repairsCache.find((x) => x.id === previewRepair.dataset.previewRepair);
+    if (r) openRepairPreview(r);
+    return;
+  }
+  const printRepair = target.closest("[data-print-repair]");
+  if (printRepair) {
+    doPrintRepair();
     return;
   }
 
@@ -625,6 +1126,28 @@ document.addEventListener("click", async (e) => {
   }
 });
 
+document.addEventListener("input", (e) => {
+  const field = e.target.closest(".repair-item-field");
+  if (!field) return;
+  const index = Number(field.dataset.repairItemIndex);
+  const prop = field.dataset.repairItemField;
+  if (!Number.isNaN(index) && currentRepairItems[index]) {
+    const value = field.type === "number" ? (field.value === "" ? "" : Number(field.value)) : field.value;
+    updateRepairItemField(index, prop, value);
+  }
+});
+
+document.addEventListener("change", (e) => {
+  const field = e.target.closest(".repair-item-field");
+  if (!field) return;
+  const index = Number(field.dataset.repairItemIndex);
+  const prop = field.dataset.repairItemField;
+  if (!Number.isNaN(index) && currentRepairItems[index]) {
+    const value = field.type === "number" ? (field.value === "" ? "" : Number(field.value)) : field.value;
+    updateRepairItemField(index, prop, value);
+  }
+});
+
 /* ──────────── Wyszukiwarki (debounce) ──────────── */
 function debounce(fn, ms) {
   let t;
@@ -641,9 +1164,71 @@ $("#repair-search")?.addEventListener("input", debounce((e) => {
   renderRepairs(filtered);
 }, 200));
 
+/* ──────────── Sesja użytkownika (email + wyloguj) ──────────── */
+function videoApiUrl(path) {
+  const token = getToken();
+  const sep = path.includes("?") ? "&" : "?";
+  return token ? `${path}${sep}token=${encodeURIComponent(token)}` : path;
+}
+
+let serviceLogoutUrl = "";
+
+async function loadSessionUser() {
+  const emailEl = $("#user-email");
+  const logoutBtn = $("#logout-btn");
+
+  // Ustaw linki z tokenem (wideo, hub)
+  const token = getToken();
+  if (token) {
+    document.querySelectorAll("a[data-auth-link]").forEach((a) => {
+      const base = a.getAttribute("data-auth-link");
+      a.href = `${base}?token=${encodeURIComponent(token)}`;
+    });
+  }
+
+  // Pobierz health żeby mieć signOutUrl
+  try {
+    const hres = await fetch(videoApiUrl("/api/health"), { credentials: "same-origin" });
+    if (hres.ok) {
+      const hdata = await hres.json();
+      serviceLogoutUrl = hdata.signOutUrl || "";
+    }
+  } catch {}
+
+  if (!emailEl) return;
+
+  try {
+    const res = await fetch(videoApiUrl("/api/me"), { credentials: "same-origin" });
+    if (!res.ok) { emailEl.textContent = ""; return; }
+    const data = await res.json();
+    const user = data.user;
+    emailEl.textContent = user?.email || "";
+    emailEl.title = user?.email ?? "";
+  } catch {
+    emailEl.textContent = "";
+  }
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      try {
+        await fetch(videoApiUrl("/api/logout"), { method: "POST", credentials: "same-origin" });
+      } catch {
+        /* cookie wygaśnie */
+      }
+      sessionStorage.removeItem("serviceToken");
+      window.location.href = serviceLogoutUrl || "http://localhost:3010/login";
+    });
+  }
+}
+
 /* ──────────── Init ──────────── */
 if (!getToken()) {
   window.location.href = `http://localhost:3010/login?callbackUrl=/service`;
 } else {
-  showView("home");
+  const hash = location.hash.replace("#", "");
+  const valid = ["home", "customers", "cars", "repairs"];
+  const initial = valid.includes(hash) ? hash : "home";
+  history.replaceState({ view: initial }, "", initial === "home" ? "#home" : `#${initial}`);
+  showView(initial, false);
+  loadSessionUser();
 }
