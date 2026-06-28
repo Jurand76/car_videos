@@ -157,6 +157,41 @@ app.get("/hub/config.js", (_req, res) => {
 
 app.use("/hub", express.static(HUB_DIR));
 
+/* ──────────── Service config + API proxy ──────────── */
+app.get("/service/config.js", (_req, res) => {
+  // Przeglądarka używa względnego "" — czyli gateway origin — jako API_BASE.
+  // Przez to wszystkie fetch z service/app.js idą na gateway, który proxy'uje /api/v1/service.
+  res.type("application/javascript").send(`window.__AUTKA_PHOTOS_API_URL__="";`);
+});
+
+/* Proxy /api/v1/service/* → backend API (api:8000 lub PHOTOS_API_URL).
+   Przekazujemy Authorization header (token JWT z service/app.js). */
+app.use("/api/v1/service", async (req, res) => {
+  const target = `${PHOTOS_API_URL}/api/v1/service${req.url}`;
+  const headers: Record<string, string> = {
+    "Content-Type": req.headers["content-type"] ?? "application/json",
+  };
+  if (req.headers.authorization) headers.Authorization = String(req.headers.authorization);
+
+  try {
+    const upstream = await fetch(target, {
+      method: req.method,
+      headers,
+      body: ["GET", "HEAD"].includes(req.method) ? undefined : JSON.stringify(req.body),
+    });
+    res.status(upstream.status);
+    upstream.headers.forEach((v, k) => {
+      if (!["content-encoding", "transfer-encoding", "content-length"].includes(k.toLowerCase()))
+        res.setHeader(k, v);
+    });
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.send(buf);
+  } catch (err) {
+    console.error("[service-proxy]", err);
+    res.status(502).json({ detail: "Service API unreachable" });
+  }
+});
+
 app.get("/video", requireVideoAuth, (_req, res) => {
   res.set("Cache-Control", "no-store, must-revalidate");
   res.sendFile(path.join(PANEL_DIR, "index.html"));
