@@ -141,6 +141,10 @@ body {
   border-color: #2dd4bf;
 }
 
+.card-service:hover {
+  border-color: #f59e0b;
+}
+
 .badge {
   display: inline-flex;
   align-self: flex-start;
@@ -160,6 +164,11 @@ body {
 .badge-teal {
   background: #ccfbf1;
   color: #115e59;
+}
+
+.badge-amber {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .card h2 {

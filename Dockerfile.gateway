@@ -37,6 +37,7 @@ RUN npm ci
 COPY server ./server
 COPY panel ./panel
 COPY hub ./hub
+COPY service ./service
 COPY src ./src
 COPY public ./public
 COPY generated ./generated

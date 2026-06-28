@@ -4,7 +4,12 @@
    AUTKA.PL — Obsługa serwisowa
    ═══════════════════════════════════════════════ */
 
-const API_BASE = window.__AUTKA_PHOTOS_API_URL__ || "http://localhost:8010";
+// Na produkcji gateway wstrzykuje window.__AUTKA_PHOTOS_API_URL__="" (pusty = ten sam origin).
+// Sprawdzamy typeof zamiast truthiness, żeby pusty string był akceptowany.
+const API_BASE =
+  typeof window.__AUTKA_PHOTOS_API_URL__ === "string"
+    ? window.__AUTKA_PHOTOS_API_URL__
+    : "http://localhost:8010";
 
 /* ──────────── Token autoryzacji (jak panel wideo) ──────────── */
 function getToken() {

@@ -18,8 +18,8 @@ declare global {
   }
 }
 
-const loginRedirect = (res: Response) => {
-  const target = `${PHOTOS_WEB_URL}/login?callbackUrl=${encodeURIComponent("/video")}`;
+const loginRedirect = (req: Request, res: Response) => {
+  const target = `${PHOTOS_WEB_URL}/login?callbackUrl=${encodeURIComponent(req.originalUrl || "/video")}`;
   res.redirect(target);
 };
 
@@ -64,13 +64,13 @@ export const requireVideoAuth = async (
   const token = getVideoAccessToken(req);
 
   if (!token) {
-    loginRedirect(res);
+    loginRedirect(req, res);
     return;
   }
 
   const user = await fetchVideoUser(token);
   if (!user) {
-    loginRedirect(res);
+    loginRedirect(req, res);
     return;
   }
 

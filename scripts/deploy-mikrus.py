@@ -23,6 +23,14 @@ APP_DIR = os.environ.get("MIKRUS_APP_DIR", "/opt/car_videos")
 FILES = [
     "panel/app.js",
     "panel/index.html",
+    "panel/styles.css",
+    "panel/graphic-effect-previews.css",
+    "service/app.js",
+    "service/index.html",
+    "service/styles.css",
+    "hub/index.html",
+    "hub/hub.js",
+    "hub/styles.css",
     "scripts/patch-remotion-content-length.js",
     "scripts/patch-remotion-node-env.js",
     "scripts/patch-remotion-process-update.js",
@@ -41,6 +49,11 @@ FILES = [
     "src/videoDefaults.ts",
     "src/renderDefaults.ts",
     "remotion.config.ts",
+    "photos/api/app/database.py",
+    "photos/api/app/models/repair.py",
+    "photos/api/app/routers/service_repairs.py",
+    "photos/api/app/schemas/service.py",
+    "photos/web/next.config.ts",
 ]
 
 
@@ -95,7 +108,7 @@ def main() -> int:
 
     build_code = run(
         client,
-        f"cd {APP_DIR} && docker compose -f docker-compose.mikrus.yml --env-file project.env build {os.environ.get('MIKRUS_BUILD_SERVICES', 'gateway studio web')}",
+        f"cd {APP_DIR} && docker compose -f docker-compose.mikrus.yml --env-file project.env build {os.environ.get('MIKRUS_BUILD_SERVICES', 'gateway studio web api')}",
         timeout=1800,
     )
     if build_code != 0:
@@ -104,7 +117,7 @@ def main() -> int:
 
     up_code = run(
         client,
-        f"cd {APP_DIR} && docker compose -f docker-compose.mikrus.yml --env-file project.env up -d gateway studio web",
+        f"cd {APP_DIR} && docker compose -f docker-compose.mikrus.yml --env-file project.env up -d gateway studio web api",
         timeout=600,
     )
     run(
