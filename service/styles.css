@@ -274,6 +274,7 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
 }
 .preview-head h3 { margin: 0 0 2px; font-size: 1.05rem; font-weight: 800; }
 .preview-head-sub { font-size: 0.76rem; color: var(--muted); }
+.preview-logo { width: 180px; height: auto; border-radius: 6px; flex-shrink: 0; }
 .preview-num { font-size: 0.8rem; font-weight: 700; color: var(--text); text-align: right; }
 .preview-num span { display: block; font-weight: 400; color: var(--muted); font-size: 0.72rem; }
 
