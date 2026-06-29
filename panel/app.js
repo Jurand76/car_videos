@@ -2387,11 +2387,9 @@ const loadHealth = async () => {
   const res = await apiFetch("/api/health");
   const data = await res.json();
 
-  if (data.hubUrl) {
-    const hub = data.hubUrl.replace(/\/$/, "");
-    $("hub-link")?.setAttribute("href", hub);
-    $("hub-home-link")?.setAttribute("href", hub);
-  }
+  // Hub jest publiczną stroną statyczną — bez tokenu, pod tym samym originem.
+  $("hub-link")?.setAttribute("href", "/hub");
+  $("hub-home-link")?.setAttribute("href", "/hub");
   if (data.photosUrl) {
     $("photos-link")?.setAttribute("href", data.photosUrl);
   }

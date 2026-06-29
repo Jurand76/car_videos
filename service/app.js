@@ -147,18 +147,19 @@ function renderCustomers(items) {
   }
   list.innerHTML = items.map((c) => `
     <div class="list-item">
-      <div class="list-item-main">
+      <div class="list-item-main" data-view-cars="${c.id}" style="cursor:pointer">
         <p class="list-item-title">${esc(customerName(c))} <span class="badge badge-kind">${c.kind === "company" ? "Firma" : "Osoba"}</span></p>
         <div class="list-item-meta">
           <span>📞 ${esc(c.phone)}</span>
           ${c.email ? `<span>✉ ${esc(c.email)}</span>` : ""}
           ${c.tax_id ? `<span>NIP: ${esc(c.tax_id)}</span>` : ""}
           <span>🚗 ${c.cars_count} ${c.cars_count === 1 ? "auto" : "aut"}</span>
+          <span class="hint-click">Kliknij, aby zobaczyć samochody →</span>
         </div>
       </div>
       <div class="list-item-actions">
-        <button class="btn btn-ghost btn-sm" data-edit-customer="${c.id}">Edytuj</button>
-        <button class="btn btn-danger btn-sm" data-del-customer="${c.id}">Usuń</button>
+        <button class="btn btn-row" data-edit-customer="${c.id}">Edytuj</button>
+        <button class="btn btn-row btn-row-danger" data-del-customer="${c.id}">Usuń</button>
       </div>
     </div>
   `).join("");
@@ -168,6 +169,7 @@ function renderCustomers(items) {
    SAMOCHODY
    ═══════════════════════════════════════════════ */
 let carsCache = [];
+let carsFilterCustomer = null;
 
 async function loadCars(q = "") {
   const list = $("#car-list");
@@ -187,26 +189,34 @@ async function loadCars(q = "") {
 
 function renderCars(items) {
   const list = $("#car-list");
+  let banner = "";
+  if (carsFilterCustomer) {
+    const cust = customersCache.find((c) => c.id === carsFilterCustomer);
+    const custName = cust ? customerName(cust) : "klienta";
+    items = items.filter((car) => car.customer_id === carsFilterCustomer);
+    banner = `<div class="filter-banner">Samochody klienta: <strong>${esc(custName)}</strong> <button type="button" class="btn-link" data-clear-cars-filter>← wszystkie samochody</button></div>`;
+  }
   if (!items.length) {
-    list.innerHTML = `<div class="list-empty">Brak samochodów. Dodaj pierwszy pojazd przyciskiem powyżej.</div>`;
+    list.innerHTML = banner + `<div class="list-empty">Brak samochodów. Dodaj pierwszy pojazd przyciskiem powyżej.</div>`;
     return;
   }
-  list.innerHTML = items.map((car) => {
+  list.innerHTML = banner + items.map((car) => {
     const owner = customersCache.find((c) => c.id === car.customer_id);
     return `
     <div class="list-item">
-      <div class="list-item-main">
+      <div class="list-item-main" data-view-repairs="${car.id}" style="cursor:pointer">
         <p class="list-item-title">${esc(car.make)} ${esc(car.model)} (${esc(car.year || "—")})</p>
         <div class="list-item-meta">
           <span>🔢 ${esc(car.plate)}</span>
           ${car.vin ? `<span>VIN: ${esc(car.vin)}</span>` : ""}
           ${car.mileage != null ? `<span>Przebieg: ${car.mileage.toLocaleString("pl-PL")} km</span>` : ""}
           ${owner ? `<span>👤 ${esc(customerName(owner))}</span>` : ""}
+          <span class="hint-click">Kliknij, aby zobaczyć usługi →</span>
         </div>
       </div>
       <div class="list-item-actions">
-        <button class="btn btn-ghost btn-sm" data-edit-car="${car.id}">Edytuj</button>
-        <button class="btn btn-danger btn-sm" data-del-car="${car.id}">Usuń</button>
+        <button class="btn btn-row" data-edit-car="${car.id}">Edytuj</button>
+        <button class="btn btn-row btn-row-danger" data-del-car="${car.id}">Usuń</button>
       </div>
     </div>`;
   }).join("");
@@ -216,6 +226,7 @@ function renderCars(items) {
    NAPRAWY
    ═══════════════════════════════════════════════ */
 let repairsCache = [];
+let repairsFilterCar = null;
 
 async function loadRepairs() {
   const list = $("#repair-list");
@@ -232,11 +243,18 @@ async function loadRepairs() {
 
 function renderRepairs(items) {
   const list = $("#repair-list");
+  let banner = "";
+  if (repairsFilterCar) {
+    const carObj = carsCache.find((c) => c.id === repairsFilterCar);
+    const carName = carObj ? `${carObj.make} ${carObj.model} (${carObj.plate})` : "samochodu";
+    items = items.filter((r) => r.car_id === repairsFilterCar);
+    banner = `<div class="filter-banner">Usługi samochodu: <strong>${esc(carName)}</strong> <button type="button" class="btn-link" data-clear-repairs-filter>← wszystkie usługi</button></div>`;
+  }
   if (!items.length) {
-    list.innerHTML = `<div class="list-empty">Brak napraw. Dodaj pierwsze zlecenie przyciskiem powyżej.</div>`;
+    list.innerHTML = banner + `<div class="list-empty">Brak napraw. Dodaj pierwsze zlecenie przyciskiem powyżej.</div>`;
     return;
   }
-  list.innerHTML = items.map((r) => {
+  list.innerHTML = banner + items.map((r) => {
     const car = carsCache.find((c) => c.id === r.car_id);
     return `
     <div class="list-item">
@@ -293,6 +311,45 @@ function closeModal() {
   $("#modal-body").innerHTML = "";
   const modalEl = document.querySelector("#modal-root .modal");
   if (modalEl) modalEl.style.maxWidth = "";
+}
+
+function openConfirm(title, message, onConfirm, confirmLabel = "Usuń") {
+  const html = `
+    <div class="confirm-body">
+      <p class="confirm-message">${esc(message)}</p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-modal-close>Anuluj</button>
+        <button type="button" class="btn btn-row btn-row-danger" id="confirm-ok-btn">${esc(confirmLabel)}</button>
+      </div>
+    </div>`;
+  openModal(title, html, null);
+  const okBtn = $("#confirm-ok-btn");
+  if (!okBtn) return;
+  okBtn.addEventListener("click", async () => {
+    okBtn.disabled = true;
+    okBtn.textContent = "Usuwanie…";
+    try {
+      await onConfirm();
+      closeModal();
+    } catch (err) {
+      toast("Błąd: " + err.message);
+      closeModal();
+    }
+  });
+}
+
+function goToCustomerCars(customerId) {
+  carsFilterCustomer = customerId;
+  const si = $("#car-search");
+  if (si) si.value = "";
+  showView("cars");
+}
+
+function goToCarRepairs(carId) {
+  repairsFilterCar = carId;
+  const si = $("#repair-search");
+  if (si) si.value = "";
+  showView("repairs");
 }
 
 /* ──────────── Formularz klienta ──────────── */
@@ -1008,7 +1065,35 @@ document.addEventListener("click", async (e) => {
   // Otwórz kafelek
   const openTile = target.closest("[data-open]");
   if (openTile) {
-    showView(openTile.dataset.open);
+    const v = openTile.dataset.open;
+    if (v === "cars") carsFilterCustomer = null;
+    if (v === "repairs") repairsFilterCar = null;
+    showView(v);
+    return;
+  }
+
+  // Kliknij klienta → jego samochody
+  const viewCarsBtn = target.closest("[data-view-cars]");
+  if (viewCarsBtn) {
+    goToCustomerCars(viewCarsBtn.dataset.viewCars);
+    return;
+  }
+  // Kliknij samochód → jego usługi
+  const viewRepairsBtn = target.closest("[data-view-repairs]");
+  if (viewRepairsBtn) {
+    goToCarRepairs(viewRepairsBtn.dataset.viewRepairs);
+    return;
+  }
+  // Czyść filtr samochodów
+  if (target.closest("[data-clear-cars-filter]")) {
+    carsFilterCustomer = null;
+    showView("cars");
+    return;
+  }
+  // Czyść filtr usług
+  if (target.closest("[data-clear-repairs-filter]")) {
+    repairsFilterCar = null;
+    showView("repairs");
     return;
   }
 
@@ -1089,38 +1174,35 @@ document.addEventListener("click", async (e) => {
   // Usuń
   const delCust = target.closest("[data-del-customer]");
   if (delCust) {
-    if (confirm("Usunąć klienta? Spowoduje to usunięcie jego samochodów i napraw.")) {
-      try {
-        await api("DELETE", `/api/v1/service/customers/${delCust.dataset.delCustomer}`);
-        toast("Klient usunięty");
-        await loadCustomers($("#customer-search").value);
-        refreshCounts();
-      } catch (err) { toast("Błąd: " + err.message); }
-    }
+    const customerId = delCust.dataset.delCustomer;
+    openConfirm("Usunąć klienta?", "Czy na pewno usunąć tego klienta? Spowoduje to usunięcie jego samochodów i napraw.", async () => {
+      await api("DELETE", `/api/v1/service/customers/${customerId}`);
+      toast("Klient usunięty");
+      await loadCustomers($("#customer-search").value);
+      refreshCounts();
+    });
     return;
   }
   const delCar = target.closest("[data-del-car]");
   if (delCar) {
-    if (confirm("Usunąć samochód? Spowoduje to usunięcie jego napraw.")) {
-      try {
-        await api("DELETE", `/api/v1/service/cars/${delCar.dataset.delCar}`);
-        toast("Samochód usunięty");
-        await loadCars($("#car-search").value);
-        refreshCounts();
-      } catch (err) { toast("Błąd: " + err.message); }
-    }
+    const carId = delCar.dataset.delCar;
+    openConfirm("Usunąć samochód?", "Czy na pewno usunąć ten samochód? Spowoduje to usunięcie jego napraw.", async () => {
+      await api("DELETE", `/api/v1/service/cars/${carId}`);
+      toast("Samochód usunięty");
+      await loadCars($("#car-search").value);
+      refreshCounts();
+    });
     return;
   }
   const delRepair = target.closest("[data-del-repair]");
   if (delRepair) {
-    if (confirm("Usunąć naprawę?")) {
-      try {
-        await api("DELETE", `/api/v1/service/repairs/${delRepair.dataset.delRepair}`);
-        toast("Naprawa usunięta");
-        await loadRepairs();
-        refreshCounts();
-      } catch (err) { toast("Błąd: " + err.message); }
-    }
+    const repairId = delRepair.dataset.delRepair;
+    openConfirm("Usunąć naprawę?", "Czy na pewno usunąć tę naprawę wraz z jej pozycjami?", async () => {
+      await api("DELETE", `/api/v1/service/repairs/${repairId}`);
+      toast("Naprawa usunięta");
+      await loadRepairs();
+      refreshCounts();
+    });
     return;
   }
 

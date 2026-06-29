@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AUTKA.PL — Obsługa serwisowa</title>
-    <link rel="stylesheet" href="/service/styles.css" />
+    <link rel="stylesheet" href="/service/styles.css?v=20260630a" />
   </head>
   <body>
     <header class="topbar">
       <div class="topbar-inner">
-        <a class="brand" href="/hub" data-auth-link="/hub">AUTKA.PL</a>
+        <a class="brand" href="/hub">AUTKA.PL</a>
         <nav class="topnav">
-          <a href="/hub" data-auth-link="/hub">Start</a>
+          <a href="/hub">Start</a>
           <a href="/dashboard">Zdjęcia</a>
           <a href="/video" data-auth-link="/video">Wideo</a>
           <span class="topnav-active">Serwis</span>
@@ -24,34 +24,38 @@
     <main class="service-page">
       <!-- ============ STRONA GŁÓWNA: 3 KAFELKI ============ -->
       <section id="view-home" class="view">
-        <div class="page-intro">
-          <h1 class="page-title">Obsługa serwisowa</h1>
-          <p class="page-lead">Wybierz moduł, aby zarządzać danymi warsztatu.</p>
+        <div class="hero">
+          <p class="eyebrow">Warsztat samochodowy</p>
+          <h1>Obsługa serwisowa</h1>
+          <p class="lead">Wybierz moduł, aby zarządzać danymi warsztatu.</p>
         </div>
 
         <div class="tiles-grid">
           <button class="tile tile-customers" data-open="customers">
-            <div class="tile-icon">👤</div>
-            <h2 class="tile-title">Klienci</h2>
-            <p class="tile-desc">Baza klientów — osoby prywatne i firmy.
+            <img class="tile-img" src="/public/service/tiles/customers.jpg" alt="Klienci" />
+            <span class="badge badge-violet">Klienci</span>
+            <h2 class="tile-title">Baza klientów</h2>
+            <p class="tile-desc">Osoby prywatne i firmy — dane kontaktowe, NIP, historia pojazdów.
               <span class="tile-count" id="count-customers"></span>
             </p>
             <span class="tile-cta">Przeglądaj klientów →</span>
           </button>
 
           <button class="tile tile-cars" data-open="cars">
-            <div class="tile-icon">🚗</div>
-            <h2 class="tile-title">Samochody</h2>
-            <p class="tile-desc">Pojazdy klientów z historią napraw.
+            <img class="tile-img" src="/public/service/tiles/cars.jpg" alt="Samochody" />
+            <span class="badge badge-teal">Samochody</span>
+            <h2 class="tile-title">Pojazdy</h2>
+            <p class="tile-desc">Pojazdy klientów z danymi technicznymi i historią napraw.
               <span class="tile-count" id="count-cars"></span>
             </p>
             <span class="tile-cta">Przeglądaj samochody →</span>
           </button>
 
           <button class="tile tile-repairs" data-open="repairs">
-            <div class="tile-icon">🔧</div>
-            <h2 class="tile-title">Usługi</h2>
-            <p class="tile-desc">Naprawy i zlecenia warsztatowe z pozycjami.
+            <img class="tile-img" src="/public/service/tiles/repairs.jpg" alt="Usługi" />
+            <span class="badge badge-amber">Usługi</span>
+            <h2 class="tile-title">Zlecenia serwisowe</h2>
+            <p class="tile-desc">Naprawy i zlecenia z pozycjami, rozliczeniem VAT i podglądem do wydruku.
               <span class="tile-count" id="count-repairs"></span>
             </p>
             <span class="tile-cta">Przeglądaj usługi →</span>
@@ -127,6 +131,6 @@
     <div id="print-root" class="print-root" hidden></div>
 
     <script src="/service/config.js"></script>
-    <script src="/service/app.js?v=20260629b"></script>
+    <script src="/service/app.js?v=20260629c"></script>
   </body>
 </html>
