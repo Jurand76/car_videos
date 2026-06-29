@@ -7,7 +7,7 @@ set -e
 
 REPO_URL="https://github.com/Jurand76/car_videos.git"
 REPO_DIR="/opt/car_videos"
-BRANCH="serwis"
+BRANCH="main"
 DOCKER_COMPOSE_FILE="docker-compose.mikrus.yml"
 
 # Color output

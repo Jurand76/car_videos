@@ -59,10 +59,17 @@ docker compose -f docker-compose.mikrus.yml up -d
 
 ## Current Branch
 
-Deployment always pulls from `serwis` branch. To deploy from a different branch, edit `/opt/car_videos/deploy.sh` line ~16:
+Deployment always pulls from `main` branch (production-ready code). 
+
+**Branch strategy:**
+- `serwis` — development branch (features, fixes in progress)
+- `main` — production-ready, merged from `serwis`
+- When ready to deploy: merge `serwis` → `main`, then run `bash /opt/car_videos/deploy.sh`
+
+To deploy from a different branch, edit `/opt/car_videos/deploy.sh` line ~11:
 
 ```bash
-BRANCH="serwis"  # <- change to desired branch
+BRANCH="main"  # <- change to desired branch (e.g. "serwis" for testing)
 ```
 
 ## Common Issues
