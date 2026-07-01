@@ -312,10 +312,30 @@
 .preview-sign-box .line { border-top: 1px solid var(--text); margin-top: 24px; padding-top: 3px; }
 
 @media print {
-  .topbar, .service-page > .view, #modal-root, .toast { display: none !important; }
-  body { background: #fff !important; }
-  .service-page { max-width: none !important; padding: 0 !important; margin: 0 !important; }
-  #print-root { display: block !important; padding: 0; }
-  .modal-backdrop { position: static !important; background: none !important; }
-  .preview-print-area { box-shadow: none !important; }
+  body {
+    background: #fff !important;
+  }
+
+  /* Ukryj cały UI (w tym Header Next), zostaw tylko obszar wydruku */
+  body * {
+    visibility: hidden;
+  }
+
+  #print-root,
+  #print-root * {
+    visibility: visible;
+  }
+
+  #print-root {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+
+  .preview-print-area {
+    box-shadow: none !important;
+  }
 }
