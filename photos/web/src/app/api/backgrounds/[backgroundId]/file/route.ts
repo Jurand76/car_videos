@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { api } from "@/lib/api";
+import { proxyImageResponse } from "@/lib/proxy-image-response";
 
 type Params = {
   params: Promise<{ backgroundId: string }>;
@@ -20,13 +21,5 @@ export async function GET(_request: Request, { params }: Params) {
     return new Response("Not found", { status: response.status });
   }
 
-  const buffer = await response.arrayBuffer();
-  const contentType = response.headers.get("content-type") || "image/jpeg";
-
-  return new Response(buffer, {
-    headers: {
-      "Content-Type": contentType,
-      "Cache-Control": "private, max-age=300",
-    },
-  });
+  return proxyImageResponse(response, "private, max-age=300");
 }
