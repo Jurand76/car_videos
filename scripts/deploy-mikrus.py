@@ -41,6 +41,7 @@ FILES = [
     "docker-compose.mikrus.yml",
     "package.json",
     "server/index.ts",
+    "server/studioControl.ts",
     "server/videoProjects.ts",
     "server/videoAuth.ts",
     "server/generate.ts",
@@ -117,7 +118,8 @@ def main() -> int:
 
     up_code = run(
         client,
-        f"cd {APP_DIR} && docker compose -f docker-compose.mikrus.yml --env-file project.env up -d gateway studio web api",
+        f"cd {APP_DIR} && docker compose -f docker-compose.mikrus.yml --env-file project.env up -d gateway web api && "
+        f"docker compose -f docker-compose.mikrus.yml --env-file project.env --profile studio up -d --no-start studio",
         timeout=600,
     )
     run(

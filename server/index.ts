@@ -18,6 +18,14 @@ import {
 import { mergeSlidesWithPublicImages } from "./publicImages";
 import { requireVideoAuth, requireVideoAuthApi } from "./videoAuth";
 import {
+  STUDIO_DOCKER_CONTROL,
+  bumpStudioActivity,
+  getStudioStatus,
+  initStudioControl,
+  startStudioContainer,
+  stopStudioContainer,
+} from "./studioControl";
+import {
   createVideoProject,
   deleteVideoProject,
   getVideoProjectManifest,
@@ -222,14 +230,16 @@ app.get("/", (_req, res) => {
   res.redirect(`${PHOTOS_WEB_URL}/login`);
 });
 
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", async (_req, res) => {
   const ai = getAiStatus();
+  const studio = await getStudioStatus();
   res.json({
     ok: true,
     aiEnabled: ai.enabled,
     aiProvider: ai.provider,
     aiModel: ai.model,
     studioUrl: STUDIO_URL,
+    studio,
     hubUrl: `${PHOTOS_WEB_URL}/hub`,
     photosUrl: `${PHOTOS_WEB_URL}/dashboard`,
     photosWebUrl: PHOTOS_WEB_URL,
@@ -240,6 +250,55 @@ app.get("/api/health", (_req, res) => {
       temperature: DEFAULT_FLOW_AI_TEMPERATURE,
     },
   });
+});
+
+app.get("/api/studio/status", requireVideoAuthApi, async (_req, res) => {
+  try {
+    res.json(await getStudioStatus());
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Błąd statusu Studia",
+    });
+  }
+});
+
+app.post("/api/studio/start", requireVideoAuthApi, async (_req, res) => {
+  try {
+    const result = await startStudioContainer();
+    if (!result.ok) {
+      res.status(502).json({ error: result.error ?? "Nie udało się uruchomić Studia" });
+      return;
+    }
+    res.json({
+      ok: true,
+      ready: result.ready,
+      studio: await getStudioStatus(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Błąd uruchamiania Studia",
+    });
+  }
+});
+
+app.post("/api/studio/stop", requireVideoAuthApi, async (_req, res) => {
+  try {
+    const result = await stopStudioContainer();
+    if (!result.ok) {
+      res.status(502).json({ error: result.error ?? "Nie udało się zatrzymać Studia" });
+      return;
+    }
+    res.json({ ok: true, studio: await getStudioStatus() });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Błąd zatrzymywania Studia",
+    });
+  }
+});
+
+app.post("/api/studio/activity", requireVideoAuthApi, (_req, res) => {
+  bumpStudioActivity();
+  res.json({ ok: true, lastActivityAt: new Date().toISOString() });
 });
 
 app.get("/api/me", requireVideoAuthApi, (req, res) => {
@@ -745,11 +804,16 @@ app.post("/api/generate", requireVideoAuthApi, async (req, res) => {
   }
 });
 
+initStudioControl();
+
 app.listen(PORT, () => {
   const ai = getAiStatus();
   console.log(`AUTKA.PL hub:     ${PHOTOS_WEB_URL}/hub`);
   console.log(`Panel wideo:      http://localhost:${PORT}/video`);
   console.log(`Remotion Studio:${STUDIO_URL}`);
+  if (STUDIO_DOCKER_CONTROL) {
+    console.log("Studio Docker:  start/stop z panelu, auto-stop po bezczynności");
+  }
   if (ai.enabled) {
     console.log(`AI: ${ai.provider} (${ai.model})`);
   } else {

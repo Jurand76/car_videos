@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api, formatFetchError, Project } from "@/lib/api";
 import { formatPlDateTime } from "@/lib/format-date";
-import { usePreloadedImages } from "@/lib/use-preloaded-images";
 
 type ProjectsListProps = {
   token: string;
@@ -52,32 +51,6 @@ function projectThumbnailUrl(project: Project): string | null {
     return `/api/files/${project.id}/car?u=${cache}`;
   }
   return null;
-}
-
-function ProjectsListSkeleton({ count }: { count: number }) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {Array.from({ length: count }, (_, index) => (
-        <Card
-          key={index}
-          className="flex !h-[110px] !max-h-[110px] overflow-hidden !p-0"
-          aria-hidden
-        >
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-between pb-1.5 pl-3 pt-2.5">
-            <div className="space-y-2">
-              <div className="h-3.5 w-3/4 animate-pulse rounded bg-slate-200" />
-              <div className="h-2.5 w-1/2 animate-pulse rounded bg-slate-100" />
-            </div>
-            <div className="flex gap-1">
-              <div className="h-5 w-16 animate-pulse rounded-md bg-slate-100" />
-              <div className="h-5 w-14 animate-pulse rounded-md bg-slate-100" />
-            </div>
-          </div>
-          <div className="my-1 mr-1 size-[100px] shrink-0 animate-pulse rounded-lg bg-slate-100" />
-        </Card>
-      ))}
-    </div>
-  );
 }
 
 function TrashIcon() {
@@ -133,15 +106,6 @@ export function ProjectsList({ token, initialProjects }: ProjectsListProps) {
     setProjects(initialProjects);
   }, [initialProjects]);
 
-  const thumbnailUrls = useMemo(
-    () =>
-      projects
-        .map((project) => projectThumbnailUrl(project))
-        .filter((url): url is string => url !== null),
-    [projects],
-  );
-  const thumbnailsReady = usePreloadedImages(thumbnailUrls);
-
   const closeModal = useCallback(() => {
     if (!deleting) {
       setDeleteTarget(null);
@@ -185,9 +149,7 @@ export function ProjectsList({ token, initialProjects }: ProjectsListProps) {
         </p>
       )}
 
-      {!thumbnailsReady ? (
-        <ProjectsListSkeleton count={projects.length} />
-      ) : (
+      {!projects.length ? null : (
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {projects.map((project) => {
           const thumbnailUrl = projectThumbnailUrl(project);
@@ -236,7 +198,9 @@ export function ProjectsList({ token, initialProjects }: ProjectsListProps) {
                   <img
                     src={thumbnailUrl}
                     alt=""
-                    className="size-[100px] rounded-lg object-cover"
+                    loading="lazy"
+                    decoding="async"
+                    className="size-[100px] rounded-lg bg-slate-100 object-cover"
                   />
                 ) : (
                   <div className="flex size-[100px] items-center justify-center rounded-lg bg-slate-50">
