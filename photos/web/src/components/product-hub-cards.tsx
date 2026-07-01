@@ -11,76 +11,83 @@ export function ProductHubCards({ photosHref, videoHref }: ProductHubCardsProps)
   const videoExternal = videoHref.startsWith("http");
 
   return (
-    <div className="mt-12 grid gap-6 sm:grid-cols-2">
-      <Link href={photosHref} className="group block text-left">
-        <Card className="h-full transition hover:border-violet-400 hover:shadow-md">
-          <span className="inline-flex rounded-md bg-violet-100 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-violet-800">
-            Zdjęcia
-          </span>
-          <h2 className="mt-4 text-xl font-semibold text-slate-900 group-hover:text-brand-600">
-            Generator zdjęć produktowych
-          </h2>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Wgraj ujęcia auta, wybierz tło i wygeneruj realistyczne kompozycje — pojedynczo
-            albo w serii (zewnątrz, wnętrze, detale).
-          </p>
-          <p className="mt-6 text-sm font-medium text-brand-600 group-hover:underline">
-            Otwórz projekt zdjęć →
-          </p>
-        </Card>
+    <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 sm:auto-rows-fr">
+      <Link href={photosHref} className="group block h-full text-left">
+        <HubCard
+          badge="Zdjęcia"
+          badgeClassName="bg-violet-100 text-violet-800"
+          hoverBorderClassName="hover:border-violet-400"
+          title="Generator zdjęć produktowych"
+          description="Wgraj ujęcia auta, wybierz tło i wygeneruj realistyczne kompozycje — pojedynczo albo w serii (zewnątrz, wnętrze, detale)."
+          cta="Otwórz projekt zdjęć →"
+        />
       </Link>
 
       {videoExternal ? (
-        <a href={videoHref} className="group block text-left no-underline">
-          <VideoCard />
+        <a href={videoHref} className="group block h-full text-left no-underline">
+          <HubCard
+            badge="Wideo"
+            badgeClassName="bg-teal-100 text-teal-800"
+            hoverBorderClassName="hover:border-teal-400"
+            title="Videoprezentacja"
+            description="Złóż reel z muzyką i beatami: slajdy, przejścia, teksty AI i podgląd w Remotion Studio."
+            cta="Otwórz panel wideo →"
+          />
         </a>
       ) : (
-        <Link href={videoHref} className="group block text-left">
-          <VideoCard />
+        <Link href={videoHref} className="group block h-full text-left">
+          <HubCard
+            badge="Wideo"
+            badgeClassName="bg-teal-100 text-teal-800"
+            hoverBorderClassName="hover:border-teal-400"
+            title="Videoprezentacja"
+            description="Złóż reel z muzyką i beatami: slajdy, przejścia, teksty AI i podgląd w Remotion Studio."
+            cta="Otwórz panel wideo →"
+          />
         </Link>
       )}
 
-      <Link href="/service" className="group block text-left sm:col-span-2">
-        <ServiceCard />
+      <Link href="/service" className="group block h-full text-left">
+        <HubCard
+          badge="Serwis"
+          badgeClassName="bg-amber-100 text-amber-800"
+          hoverBorderClassName="hover:border-amber-400"
+          title="Obsługa serwisowa"
+          description="Baza klientów, samochodów i zleceń serwisowych z pozycjami, VAT i podglądem do wydruku."
+          cta="Wejdź w obsługę serwisową →"
+        />
       </Link>
     </div>
   );
 }
 
-function VideoCard() {
-  return (
-    <Card className="h-full transition hover:border-teal-400 hover:shadow-md">
-      <span className="inline-flex rounded-md bg-teal-100 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-teal-800">
-        Wideo
-      </span>
-      <h2 className="mt-4 text-xl font-semibold text-slate-900 group-hover:text-brand-600">
-        Videoprezentacja
-      </h2>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600">
-        Złóż reel z muzyką i beatami: slajdy, przejścia, teksty AI i podgląd w Remotion Studio.
-      </p>
-      <p className="mt-6 text-sm font-medium text-brand-600 group-hover:underline">
-        Otwórz panel wideo →
-      </p>
-    </Card>
-  );
-}
+type HubCardProps = {
+  badge: string;
+  badgeClassName: string;
+  hoverBorderClassName: string;
+  title: string;
+  description: string;
+  cta: string;
+};
 
-function ServiceCard() {
+function HubCard({
+  badge,
+  badgeClassName,
+  hoverBorderClassName,
+  title,
+  description,
+  cta,
+}: HubCardProps) {
   return (
-    <Card className="h-full transition hover:border-amber-400 hover:shadow-md">
-      <span className="inline-flex rounded-md bg-amber-100 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-amber-800">
-        Serwis
+    <Card className={`flex h-full flex-col transition hover:shadow-md ${hoverBorderClassName}`}>
+      <span
+        className={`inline-flex w-fit self-start rounded-md px-2 py-1 text-[10px] font-medium uppercase tracking-wide ${badgeClassName}`}
+      >
+        {badge}
       </span>
-      <h2 className="mt-4 text-xl font-semibold text-slate-900 group-hover:text-brand-600">
-        Obsługa serwisowa
-      </h2>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600">
-        Baza klientów, samochodów i zleceń serwisowych z pozycjami, VAT i podglądem do wydruku.
-      </p>
-      <p className="mt-6 text-sm font-medium text-brand-600 group-hover:underline">
-        Wejdź w obsługę serwisową →
-      </p>
+      <h2 className="mt-4 text-xl font-semibold text-slate-900 group-hover:text-brand-600">{title}</h2>
+      <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{description}</p>
+      <p className="mt-6 text-sm font-medium text-brand-600 group-hover:underline">{cta}</p>
     </Card>
   );
 }
