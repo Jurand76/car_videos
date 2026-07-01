@@ -90,9 +90,9 @@
 .tile-cta { margin-top: 24px; font-size: 0.875rem; font-weight: 600; color: var(--brand); }
 
 /* Background images per tile (top-right corner, ~1/4 area) */
-.tile-customers .tile-img { background-image: url('/public/service/tiles/customers.jpg'); }
-.tile-cars      .tile-img { background-image: url('/public/service/tiles/cars.jpg'); }
-.tile-repairs   .tile-img { background-image: url('/public/service/tiles/repairs.jpg'); }
+.tile-customers .tile-img { background-image: url('/service/tiles/customers.jpg'); }
+.tile-cars      .tile-img { background-image: url('/service/tiles/cars.jpg'); }
+.tile-repairs   .tile-img { background-image: url('/service/tiles/repairs.jpg'); }
 
 .tile-customers:hover { border-color: #a78bfa; }
 .tile-customers .tile-cta { color: #7c3aed; }

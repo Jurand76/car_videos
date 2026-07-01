@@ -31,7 +31,7 @@ export function ServiceClient({ accessToken }: ServiceClientProps) {
             <button className="tile tile-customers" type="button" data-open="customers">
               <img
                 className="tile-img"
-                src="/public/service/tiles/customers.jpg"
+                src="/service/tiles/customers.jpg"
                 alt="Klienci"
               />
               <span className="badge badge-violet">Klienci</span>
@@ -44,7 +44,7 @@ export function ServiceClient({ accessToken }: ServiceClientProps) {
             </button>
 
             <button className="tile tile-cars" type="button" data-open="cars">
-              <img className="tile-img" src="/public/service/tiles/cars.jpg" alt="Samochody" />
+              <img className="tile-img" src="/service/tiles/cars.jpg" alt="Samochody" />
               <span className="badge badge-teal">Samochody</span>
               <h2 className="tile-title">Pojazdy</h2>
               <p className="tile-desc">
@@ -55,7 +55,7 @@ export function ServiceClient({ accessToken }: ServiceClientProps) {
             </button>
 
             <button className="tile tile-repairs" type="button" data-open="repairs">
-              <img className="tile-img" src="/public/service/tiles/repairs.jpg" alt="Usługi" />
+              <img className="tile-img" src="/service/tiles/repairs.jpg" alt="Usługi" />
               <span className="badge badge-amber">Usługi</span>
               <h2 className="tile-title">Zlecenia serwisowe</h2>
               <p className="tile-desc">
