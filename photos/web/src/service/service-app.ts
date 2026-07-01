@@ -821,6 +821,7 @@ function repairPreviewHtml(repair, car, owner) {
   return `
   <div class="preview-doc preview-print-area">
     <div class="preview-head">
+      <img class="preview-logo" src="/service/tiles/logo.jpg" alt="" />
       <div>
         <h3>Zlecenie serwisowe nr ${esc(docNo)}</h3>
         <div class="preview-head-sub">
@@ -972,12 +973,22 @@ function doPrintRepair() {
   printRoot.hidden = false;
   // Zamknij modal, aby nie był widoczny na wydruku
   closeModal();
-  // Drukuj po odświeżeniu DOM
+  // Drukuj po załadowaniu obrazka (logo)
+  const logo = printRoot.querySelector(".preview-logo") as HTMLImageElement | null;
+  const waitLogo =
+    logo && !logo.complete
+      ? new Promise<void>((res) => {
+          logo.onload = () => res();
+          logo.onerror = () => res();
+        })
+      : Promise.resolve();
   requestAnimationFrame(() => {
-    window.print();
-    // Po druku przywróć stan
-    printRoot.hidden = true;
-    printRoot.innerHTML = "";
+    waitLogo.then(() => {
+      window.print();
+      // Po druku przywróć stan
+      printRoot.hidden = true;
+      printRoot.innerHTML = "";
+    });
   });
 }
 
