@@ -8,7 +8,6 @@ import { PhotoCatalogViewer } from "@/components/photo-catalog-viewer";
 import { Card } from "@/components/ui/card";
 import { GeneratedFile, SeriesCategory } from "@/lib/api";
 import { formatPlDateTime } from "@/lib/format-date";
-import { usePreloadedImages } from "@/lib/use-preloaded-images";
 
 export const MAX_SERIES_CATALOGS = 5;
 export const SINGLE_CATALOG_TITLE = "Zdjęcia pojedyncze";
@@ -158,12 +157,6 @@ export function GraphicsCatalogGallery({
 
   const [openViewer, setOpenViewer] = useState<OpenViewer | null>(null);
 
-  const coverUrls = useMemo(
-    () => catalogs.map((catalog) => resultImageUrl(catalog.coverFile)),
-    [catalogs],
-  );
-  const coversReady = usePreloadedImages(coverUrls);
-
   const activeCatalog = useMemo(() => {
     if (!openViewer) return null;
     if (openViewer.kind === "single") {
@@ -202,24 +195,6 @@ export function GraphicsCatalogGallery({
     );
   }
 
-  if (!coversReady) {
-    return (
-      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {catalogs.map((catalog) => (
-          <Card key={catalog.id} className="!p-0 overflow-hidden" aria-hidden>
-            <div className={CATALOG_IMAGE_WRAP}>
-              <div className="aspect-[4/3] w-full animate-pulse rounded-lg bg-slate-100" />
-            </div>
-            <div className={clsx("space-y-2", CATALOG_TEXT_WRAP)}>
-              <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200" />
-              <div className="h-3 w-1/2 animate-pulse rounded bg-slate-100" />
-            </div>
-          </Card>
-        ))}
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -252,6 +227,7 @@ export function GraphicsCatalogGallery({
                     alt={catalog.title}
                     fill
                     unoptimized
+                    loading="lazy"
                     className="rounded-lg object-cover transition group-hover:scale-[1.02]"
                     sizes="(max-width: 640px) 50vw, 20vw"
                   />

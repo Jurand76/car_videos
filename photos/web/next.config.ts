@@ -32,6 +32,10 @@ const nextConfig: NextConfig = {
       { source: "/api/generate", destination: `${gatewayUrl}/api/generate` },
       { source: "/api/video-projects", destination: `${gatewayUrl}/api/video-projects` },
       { source: "/api/video-projects/:path*", destination: `${gatewayUrl}/api/video-projects/:path*` },
+      { source: "/api/studio/status", destination: `${gatewayUrl}/api/studio/status` },
+      { source: "/api/studio/start", destination: `${gatewayUrl}/api/studio/start` },
+      { source: "/api/studio/stop", destination: `${gatewayUrl}/api/studio/stop` },
+      { source: "/api/studio/activity", destination: `${gatewayUrl}/api/studio/activity` },
       { source: "/public/:path*", destination: `${gatewayUrl}/public/:path*` },
     ];
   },

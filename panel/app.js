@@ -2404,13 +2404,6 @@ const loadHealth = async () => {
   // Zachowaj URL wylogowania dla logout-btn
   logoutUrl = data.signOutUrl;
 
-  if (data.studioUrl) {
-    const studioLink = $("studio-link");
-    if (studioLink) {
-      studioLink.href = data.studioUrl;
-    }
-  }
-
   if (data.flowAiDefaults) {
     flowAiDefaults = {
       systemPrompt: data.flowAiDefaults.systemPrompt ?? "",
@@ -2430,6 +2423,161 @@ const loadHealth = async () => {
 };
 
 let logoutUrl = "";
+
+let studioUrl = "";
+let studioControlEnabled = false;
+let studioIdleMinutes = 30;
+let studioWindow = null;
+let studioHeartbeatTimer = null;
+let studioStatusTimer = null;
+
+const setStudioStatus = (text, kind = "ok") => {
+  const el = $("studio-status");
+  if (!el) return;
+  el.textContent = text;
+  el.className = `studio-status muted ${kind === "busy" ? "is-busy" : kind === "err" ? "is-err" : "is-ok"}`;
+};
+
+const stopStudioHeartbeat = () => {
+  if (studioHeartbeatTimer) {
+    clearInterval(studioHeartbeatTimer);
+    studioHeartbeatTimer = null;
+  }
+};
+
+const pingStudioActivity = () =>
+  apiFetch("/api/studio/activity", { method: "POST" }).catch(() => {});
+
+const startStudioHeartbeat = () => {
+  stopStudioHeartbeat();
+  if (!studioControlEnabled) return;
+  void pingStudioActivity();
+  studioHeartbeatTimer = setInterval(() => {
+    if (studioWindow && studioWindow.closed) {
+      studioWindow = null;
+      stopStudioHeartbeat();
+      return;
+    }
+    void pingStudioActivity();
+  }, 4 * 60 * 1000);
+};
+
+const refreshStudioStatusLabel = async () => {
+  if (!studioControlEnabled) {
+    setStudioStatus("");
+    return;
+  }
+  try {
+    const res = await apiFetch("/api/studio/status");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.starting) {
+      setStudioStatus("Uruchamianie Remotion Studio…", "busy");
+      return;
+    }
+    if (data.ready) {
+      setStudioStatus(
+        `Studio działa — auto-wyłączenie po ${data.idleMinutes} min bezczynności.`,
+        "ok",
+      );
+      return;
+    }
+    if (data.running) {
+      setStudioStatus("Studio startuje (kompilacja bundla)…", "busy");
+      return;
+    }
+    setStudioStatus(
+      `Studio wyłączone (oszczędność ~550 MB RAM). Kliknij „Otwórz Remotion Studio”, aby uruchomić.`,
+      "ok",
+    );
+  } catch {
+    // ignore
+  }
+};
+
+const waitForStudioReady = async (maxMs = 120000) => {
+  const started = Date.now();
+  while (Date.now() - started < maxMs) {
+    const res = await apiFetch("/api/studio/status");
+    if (!res.ok) throw new Error("Nie udało się sprawdzić statusu Studia");
+    const data = await res.json();
+    if (data.ready) return data;
+    if (!data.running && !data.starting) {
+      throw new Error("Studio nie wystartowało");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  throw new Error("Przekroczono czas oczekiwania na Remotion Studio");
+};
+
+const openRemotionStudio = async () => {
+  const btn = $("studio-open-btn");
+  const url = studioUrl;
+  if (!url) {
+    setStudioStatus("Brak adresu Studia — odśwież stronę.", "err");
+    return;
+  }
+
+  if (!studioControlEnabled) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  setStudioStatus("Uruchamianie kontenera Studia…", "busy");
+
+  try {
+    const startRes = await apiFetch("/api/studio/start", { method: "POST" });
+    const startData = await startRes.json().catch(() => ({}));
+    if (!startRes.ok) {
+      throw new Error(startData.error || "Nie udało się uruchomić Studia");
+    }
+
+    if (!startData.ready) {
+      setStudioStatus("Studio startuje — kompilacja może potrwać ok. 30 s…", "busy");
+      await waitForStudioReady();
+    }
+
+    studioWindow = window.open(url, "_blank", "noopener,noreferrer");
+    if (!studioWindow) {
+      throw new Error("Przeglądarka zablokowała nowe okno — odblokuj popupy.");
+    }
+
+    startStudioHeartbeat();
+    setStudioStatus(
+      `Studio działa — auto-wyłączenie po ${studioIdleMinutes} min bezczynności.`,
+      "ok",
+    );
+  } catch (error) {
+    setStudioStatus(
+      error instanceof Error ? error.message : "Błąd uruchamiania Studia",
+      "err",
+    );
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+const initStudioControl = async (healthData) => {
+  studioUrl = healthData?.studioUrl || "";
+  studioControlEnabled = Boolean(healthData?.studio?.enabled);
+  studioIdleMinutes = healthData?.studio?.idleMinutes || 30;
+
+  bindClick("studio-open-btn", () => {
+    void openRemotionStudio();
+  });
+
+  if (!studioControlEnabled) {
+    setStudioStatus("");
+    return;
+  }
+
+  await refreshStudioStatusLabel();
+  if (studioStatusTimer) clearInterval(studioStatusTimer);
+  studioStatusTimer = setInterval(() => {
+    void refreshStudioStatusLabel();
+  }, 60_000);
+};
 
 const loadSessionUser = async () => {
   const emailEl = $("user-email");
@@ -3056,7 +3204,8 @@ document.querySelectorAll("[data-project-modal-close]").forEach((el) => {
 const initPanel = async () => {
   persistVideoAccessToken();
   updateEffectsSummary();
-  await loadHealth();
+  const health = await loadHealth();
+  await initStudioControl(health);
   await loadSessionUser();
   await loadAudioLibrary();
   updateSyncPanelVisibility();

@@ -115,9 +115,10 @@ main() {
     log_info "Building Docker images (no cache)..."
     docker compose -f "$DOCKER_COMPOSE_FILE" build --no-cache
     
-    # Step 9: Start containers
+    # Step 9: Start containers (studio tworzone, ale nie uruchamiane — start z panelu wideo)
     log_info "Starting containers..."
     docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+    docker compose -f "$DOCKER_COMPOSE_FILE" --profile studio up -d --no-start studio || true
     
     # Step 10: Wait for services to be ready
     log_info "Waiting for services to be ready..."

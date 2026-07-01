@@ -22,26 +22,37 @@ export default async function DashboardPage() {
   let galleryError: string | null = null;
   let promptsError: string | null = null;
 
-  try {
-    const allProjects = await api.listProjects(session.accessToken);
-    projects = allProjects.filter((p) => p.project_type !== "simple");
-  } catch (err) {
+  const [projectsResult, galleryResult, promptsResult] = await Promise.allSettled([
+    api.listProjects(session.accessToken),
+    api.listGeneratedFiles(session.accessToken, "all"),
+    api.listSavedPrompts(session.accessToken),
+  ]);
+
+  if (projectsResult.status === "fulfilled") {
+    projects = projectsResult.value.filter((p) => p.project_type !== "simple");
+  } else {
     loadError =
-      err instanceof Error
-        ? err.message
+      projectsResult.reason instanceof Error
+        ? projectsResult.reason.message
         : "Nie udało się połączyć z API — sprawdź czy kontener api działa";
   }
-  try {
-    galleryFiles = await api.listGeneratedFiles(session.accessToken, "all");
-  } catch (err) {
+
+  if (galleryResult.status === "fulfilled") {
+    galleryFiles = galleryResult.value;
+  } else {
     galleryError =
-      err instanceof Error ? err.message : "Nie udało się załadować bazy grafik";
+      galleryResult.reason instanceof Error
+        ? galleryResult.reason.message
+        : "Nie udało się załadować bazy grafik";
   }
-  try {
-    savedPrompts = await api.listSavedPrompts(session.accessToken);
-  } catch (err) {
+
+  if (promptsResult.status === "fulfilled") {
+    savedPrompts = promptsResult.value;
+  } else {
     promptsError =
-      err instanceof Error ? err.message : "Nie udało się załadować bazy promptów";
+      promptsResult.reason instanceof Error
+        ? promptsResult.reason.message
+        : "Nie udało się załadować bazy promptów";
   }
 
   return (

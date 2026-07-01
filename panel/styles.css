@@ -1024,6 +1024,24 @@ a.btn-primary:hover {
   margin-top: 16px;
 }
 
+.studio-status {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.studio-status.is-busy {
+  color: var(--accent, #2563eb);
+}
+
+.studio-status.is-err {
+  color: var(--danger);
+}
+
+.studio-status.is-ok {
+  color: var(--muted, #64748b);
+}
+
 .export-hint {
   margin: 12px 0 0;
   font-size: 0.82rem;
