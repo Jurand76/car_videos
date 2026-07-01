@@ -7,6 +7,12 @@ const gatewayUrl = (process.env.NEXT_PUBLIC_GATEWAY_URL ?? "http://localhost:400
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  images: {
+    localPatterns: [
+      { pathname: "/api/generated-files/**" },
+      { pathname: "/api/files/**" },
+    ],
+  },
   experimental: {
     // /api/generate i analyze-audio potrafią trwać kilka minut (Essentia + LLM).
     proxyTimeout: 600_000,
