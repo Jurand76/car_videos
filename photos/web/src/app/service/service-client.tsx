@@ -22,7 +22,6 @@ export function ServiceClient({ accessToken }: ServiceClientProps) {
       <main className="service-page">
         <section id="view-home" className="view">
           <div className="hero">
-            <p className="eyebrow">Warsztat samochodowy</p>
             <h1>Obsługa serwisowa</h1>
             <p className="lead">Wybierz moduł, aby zarządzać danymi warsztatu.</p>
           </div>
