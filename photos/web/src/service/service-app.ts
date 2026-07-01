@@ -139,8 +139,9 @@ function renderCustomers(items) {
         </div>
       </div>
       <div class="list-item-actions">
-        <button class="btn btn-ghost btn-sm" data-edit-customer="${c.id}">Edytuj</button>
-        <button class="btn btn-danger btn-sm" data-del-customer="${c.id}">Usuń</button>
+        <button class="btn btn-row btn-row-green" data-view-cars="${c.id}">Samochody</button>
+        <button class="btn btn-row" data-edit-customer="${c.id}">Edytuj</button>
+        <button class="btn btn-row btn-row-danger" data-del-customer="${c.id}">Usuń</button>
       </div>
     </div>
   `).join("");
@@ -150,6 +151,7 @@ function renderCustomers(items) {
    SAMOCHODY
    ═══════════════════════════════════════════════ */
 let carsCache = [];
+let carsFilterCustomer: string | null = null;
 
 async function loadCars(q = "") {
   const list = $("#car-list");
@@ -169,11 +171,18 @@ async function loadCars(q = "") {
 
 function renderCars(items) {
   const list = $("#car-list");
+  let banner = "";
+  if (carsFilterCustomer) {
+    const cust = customersCache.find((c) => c.id === carsFilterCustomer);
+    const custName = cust ? customerName(cust) : "klienta";
+    items = items.filter((car) => car.customer_id === carsFilterCustomer);
+    banner = `<div class="filter-banner">Samochody klienta: <strong>${esc(custName)}</strong> <button type="button" class="btn-link" data-clear-cars-filter>← wszystkie samochody</button></div>`;
+  }
   if (!items.length) {
-    list.innerHTML = `<div class="list-empty">Brak samochodów. Dodaj pierwszy pojazd przyciskiem powyżej.</div>`;
+    list.innerHTML = banner + `<div class="list-empty">Brak samochodów. Dodaj pierwszy pojazd przyciskiem powyżej.</div>`;
     return;
   }
-  list.innerHTML = items.map((car) => {
+  list.innerHTML = banner + items.map((car) => {
     const owner = customersCache.find((c) => c.id === car.customer_id);
     return `
     <div class="list-item">
@@ -187,8 +196,9 @@ function renderCars(items) {
         </div>
       </div>
       <div class="list-item-actions">
-        <button class="btn btn-ghost btn-sm" data-edit-car="${car.id}">Edytuj</button>
-        <button class="btn btn-danger btn-sm" data-del-car="${car.id}">Usuń</button>
+        <button class="btn btn-row btn-row-green" data-view-repairs="${car.id}">Usługi</button>
+        <button class="btn btn-row" data-edit-car="${car.id}">Edytuj</button>
+        <button class="btn btn-row btn-row-danger" data-del-car="${car.id}">Usuń</button>
       </div>
     </div>`;
   }).join("");
@@ -198,6 +208,7 @@ function renderCars(items) {
    NAPRAWY
    ═══════════════════════════════════════════════ */
 let repairsCache = [];
+let repairsFilterCar: string | null = null;
 
 async function loadRepairs() {
   const list = $("#repair-list");
@@ -214,11 +225,18 @@ async function loadRepairs() {
 
 function renderRepairs(items) {
   const list = $("#repair-list");
+  let banner = "";
+  if (repairsFilterCar) {
+    const carObj = carsCache.find((c) => c.id === repairsFilterCar);
+    const carName = carObj ? `${carObj.make} ${carObj.model} (${carObj.plate})` : "samochodu";
+    items = items.filter((r) => r.car_id === repairsFilterCar);
+    banner = `<div class="filter-banner">Usługi samochodu: <strong>${esc(carName)}</strong> <button type="button" class="btn-link" data-clear-repairs-filter>← wszystkie usługi</button></div>`;
+  }
   if (!items.length) {
-    list.innerHTML = `<div class="list-empty">Brak napraw. Dodaj pierwsze zlecenie przyciskiem powyżej.</div>`;
+    list.innerHTML = banner + `<div class="list-empty">Brak napraw. Dodaj pierwsze zlecenie przyciskiem powyżej.</div>`;
     return;
   }
-  list.innerHTML = items.map((r) => {
+  list.innerHTML = banner + items.map((r) => {
     const car = carsCache.find((c) => c.id === r.car_id);
     return `
     <div class="list-item">
@@ -275,6 +293,20 @@ function closeModal() {
   $("#modal-body").innerHTML = "";
   const modalEl = document.querySelector("#modal-root .modal");
   if (modalEl) modalEl.style.maxWidth = "";
+}
+
+function goToCustomerCars(customerId: string) {
+  carsFilterCustomer = customerId;
+  const si = $("#car-search") as HTMLInputElement | null;
+  if (si) si.value = "";
+  showView("cars");
+}
+
+function goToCarRepairs(carId: string) {
+  repairsFilterCar = carId;
+  const si = $("#repair-search") as HTMLInputElement | null;
+  if (si) si.value = "";
+  showView("repairs");
 }
 
 /* ──────────── Formularz klienta ──────────── */
@@ -1000,7 +1032,34 @@ async function handleClick(e: Event) {
   // Otwórz kafelek
   const openTile = target.closest("[data-open]");
   if (openTile) {
-    showView(openTile.dataset.open);
+    const view = openTile.dataset.open;
+    if (view === "cars") carsFilterCustomer = null;
+    if (view === "repairs") repairsFilterCar = null;
+    showView(view);
+    return;
+  }
+
+  const viewCarsBtn = target.closest("[data-view-cars]");
+  if (viewCarsBtn) {
+    goToCustomerCars(viewCarsBtn.getAttribute("data-view-cars")!);
+    return;
+  }
+
+  const viewRepairsBtn = target.closest("[data-view-repairs]");
+  if (viewRepairsBtn) {
+    goToCarRepairs(viewRepairsBtn.getAttribute("data-view-repairs")!);
+    return;
+  }
+
+  if (target.closest("[data-clear-cars-filter]")) {
+    carsFilterCustomer = null;
+    showView("cars");
+    return;
+  }
+
+  if (target.closest("[data-clear-repairs-filter]")) {
+    repairsFilterCar = null;
+    showView("repairs");
     return;
   }
 

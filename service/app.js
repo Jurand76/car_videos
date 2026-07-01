@@ -147,17 +147,17 @@ function renderCustomers(items) {
   }
   list.innerHTML = items.map((c) => `
     <div class="list-item">
-      <div class="list-item-main" data-view-cars="${c.id}" style="cursor:pointer">
+      <div class="list-item-main">
         <p class="list-item-title">${esc(customerName(c))} <span class="badge badge-kind">${c.kind === "company" ? "Firma" : "Osoba"}</span></p>
         <div class="list-item-meta">
           <span>📞 ${esc(c.phone)}</span>
           ${c.email ? `<span>✉ ${esc(c.email)}</span>` : ""}
           ${c.tax_id ? `<span>NIP: ${esc(c.tax_id)}</span>` : ""}
           <span>🚗 ${c.cars_count} ${c.cars_count === 1 ? "auto" : "aut"}</span>
-          <span class="hint-click">Kliknij, aby zobaczyć samochody →</span>
         </div>
       </div>
       <div class="list-item-actions">
+        <button class="btn btn-row btn-row-green" data-view-cars="${c.id}">Samochody</button>
         <button class="btn btn-row" data-edit-customer="${c.id}">Edytuj</button>
         <button class="btn btn-row btn-row-danger" data-del-customer="${c.id}">Usuń</button>
       </div>
@@ -204,17 +204,17 @@ function renderCars(items) {
     const owner = customersCache.find((c) => c.id === car.customer_id);
     return `
     <div class="list-item">
-      <div class="list-item-main" data-view-repairs="${car.id}" style="cursor:pointer">
+      <div class="list-item-main">
         <p class="list-item-title">${esc(car.make)} ${esc(car.model)} (${esc(car.year || "—")})</p>
         <div class="list-item-meta">
           <span>🔢 ${esc(car.plate)}</span>
           ${car.vin ? `<span>VIN: ${esc(car.vin)}</span>` : ""}
           ${car.mileage != null ? `<span>Przebieg: ${car.mileage.toLocaleString("pl-PL")} km</span>` : ""}
           ${owner ? `<span>👤 ${esc(customerName(owner))}</span>` : ""}
-          <span class="hint-click">Kliknij, aby zobaczyć usługi →</span>
         </div>
       </div>
       <div class="list-item-actions">
+        <button class="btn btn-row btn-row-green" data-view-repairs="${car.id}">Usługi</button>
         <button class="btn btn-row" data-edit-car="${car.id}">Edytuj</button>
         <button class="btn btn-row btn-row-danger" data-del-car="${car.id}">Usuń</button>
       </div>

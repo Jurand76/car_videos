@@ -159,6 +159,12 @@ body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; 
   border-color: var(--red);
 }
 .btn-row-danger:hover:not(:disabled) { background: var(--red-bg); border-color: var(--red); }
+.btn-row-green {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #6ee7b7;
+}
+.btn-row-green:hover:not(:disabled) { background: #d1fae5; border-color: #34d399; }
 .list-item-actions .btn { font-size: 0.8rem; padding: 6px 12px; }
 
 /* ──────────── Modal ──────────── */
