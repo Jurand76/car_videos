@@ -1,2 +1,1 @@
-export const getServicePanelUrl = (accessToken: string) =>
-  `/service?token=${encodeURIComponent(accessToken)}`;
+export const getServicePanelUrl = (_accessToken?: string) => "/service";

@@ -9,7 +9,7 @@ export default auth((req) => {
     return NextResponse.redirect(login);
   }
 
-  const protectedPanels = ["/video", "/service"];
+  const protectedPanels = ["/video"];
   if (
     protectedPanels.includes(req.nextUrl.pathname) &&
     !req.nextUrl.searchParams.has("token") &&

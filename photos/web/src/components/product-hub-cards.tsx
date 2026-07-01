@@ -5,10 +5,9 @@ import { Card } from "@/components/ui/card";
 type ProductHubCardsProps = {
   photosHref: string;
   videoHref: string;
-  serviceHref: string | null;
 };
 
-export function ProductHubCards({ photosHref, videoHref, serviceHref }: ProductHubCardsProps) {
+export function ProductHubCards({ photosHref, videoHref }: ProductHubCardsProps) {
   const videoExternal = videoHref.startsWith("http");
 
   return (
@@ -41,11 +40,9 @@ export function ProductHubCards({ photosHref, videoHref, serviceHref }: ProductH
         </Link>
       )}
 
-      {serviceHref ? (
-        <a href={serviceHref} className="group block text-left no-underline">
-          <ServiceCard />
-        </a>
-      ) : null}
+      <Link href="/service" className="group block text-left sm:col-span-2">
+        <ServiceCard />
+      </Link>
     </div>
   );
 }
@@ -79,7 +76,7 @@ function ServiceCard() {
         Obsługa serwisowa
       </h2>
       <p className="mt-2 text-sm leading-relaxed text-slate-600">
-        Baza klientów, samochodów i historii napraw warsztatowych. Moduł w przygotowaniu.
+        Baza klientów, samochodów i zleceń serwisowych z pozycjami, VAT i podglądem do wydruku.
       </p>
       <p className="mt-6 text-sm font-medium text-brand-600 group-hover:underline">
         Wejdź w obsługę serwisową →

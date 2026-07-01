@@ -5,16 +5,16 @@ import { usePathname } from "next/navigation";
 
 type ModuleNavProps = {
   videoHref: string | null;
-  serviceHref: string | null;
 };
 
 const linkClass = "text-sm text-slate-600 hover:text-slate-900";
 const activeClass = "text-sm font-semibold text-brand-600";
 
-export function ModuleNav({ videoHref, serviceHref }: ModuleNavProps) {
+export function ModuleNav({ videoHref }: ModuleNavProps) {
   const pathname = usePathname();
   const isStart = pathname === "/hub";
   const isPhotos = pathname.startsWith("/dashboard");
+  const isService = pathname.startsWith("/service");
 
   return (
     <>
@@ -37,11 +37,13 @@ export function ModuleNav({ videoHref, serviceHref }: ModuleNavProps) {
           Wideo
         </a>
       ) : null}
-      {serviceHref ? (
-        <a href={serviceHref} className={linkClass}>
+      {isService ? (
+        <span className={activeClass}>Serwis</span>
+      ) : (
+        <Link href="/service" className={linkClass}>
           Serwis
-        </a>
-      ) : null}
+        </Link>
+      )}
     </>
   );
 }
