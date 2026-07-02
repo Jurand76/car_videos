@@ -37,9 +37,15 @@ async def list_repairs(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[RepairListItem]:
-    stmt = select(Repair, func.coalesce(func.sum(RepairItem.total), 0).label("grand_total")).outerjoin(
-        RepairItem, RepairItem.repair_id == Repair.id
-    ).group_by(Repair.id).order_by(Repair.received_at.desc())
+    stmt = select(
+        Repair,
+        func.coalesce(func.sum(RepairItem.total), 0).label("grand_total"),
+        func.coalesce(func.sum(RepairItem.purchase_price * RepairItem.quantity), 0).label(
+            "purchase_total"
+        ),
+    ).outerjoin(RepairItem, RepairItem.repair_id == Repair.id).group_by(Repair.id).order_by(
+        Repair.received_at.desc()
+    )
 
     if car_id is not None:
         stmt = stmt.where(Repair.car_id == car_id)
@@ -48,9 +54,10 @@ async def list_repairs(
 
     rows = (await db.execute(stmt)).all()
     result: list[RepairListItem] = []
-    for repair, grand_total in rows:
+    for repair, grand_total, purchase_total in rows:
         item = RepairListItem.model_validate(repair)
         item.grand_total = Decimal(grand_total) if grand_total else Decimal("0")
+        item.purchase_total = Decimal(purchase_total) if purchase_total else Decimal("0")
         result.append(item)
     return result
 

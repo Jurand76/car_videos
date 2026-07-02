@@ -290,3 +290,4 @@ class RepairListItem(BaseModel):
     completed_at: datetime | None
     status: str
     grand_total: Decimal | None = None
+    purchase_total: Decimal | None = None

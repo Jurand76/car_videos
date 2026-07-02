@@ -120,7 +120,9 @@
 .list-item:hover { box-shadow: var(--shadow-sm); border-color: #cbd5e1; }
 .list-item-main { flex: 1; min-width: 0; }
 .list-item-title { font-weight: 600; font-size: 0.95rem; margin: 0 0 3px; }
-.list-item-meta { font-size: 0.8rem; line-height: 1.25; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+.list-item-meta { font-size: 0.8rem; line-height: 1.25; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.repair-meta-money { font-weight: 600; color: var(--text); white-space: nowrap; }
+.repair-meta-income { color: var(--green); }
 .list-item-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .list-empty { padding: 48px 20px; text-align: center; color: var(--muted); font-size: 0.95rem; }
 
@@ -236,10 +238,10 @@
 .items-summary-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
 }
-.items-summary-block { display: flex; flex-direction: column; gap: 6px; }
+.items-summary-block { display: flex; flex-direction: column; gap: 3px; }
 .items-summary-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .items-summary-profit .items-summary-label { color: var(--green); }
-.items-summary-totals { display: flex; flex-direction: column; gap: 4px; font-size: 0.88rem; }
+.items-summary-totals { display: flex; flex-direction: column; gap: 1px; font-size: 0.76rem; line-height: 1.2; }
 .items-summary-totals span { display: flex; justify-content: space-between; gap: 12px; }
 .items-summary-totals strong { color: var(--text); font-weight: 700; text-align: right; }
 .items-summary-profit .items-summary-totals strong { color: var(--green); }

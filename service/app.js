@@ -74,6 +74,16 @@ function fmtMoney(v) {
   return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " zł";
 }
 
+function repairListMoneyHtml(repair) {
+  const grand = Number(repair.grand_total || 0);
+  const purchase = Number(repair.purchase_total || 0);
+  if (grand <= 0 && purchase <= 0) return "";
+  const income = grand - purchase;
+  return `
+    <span class="repair-meta-money">💰 ${fmtMoney(grand)}</span>
+    <span class="repair-meta-money repair-meta-income">💰 ${fmtMoney(income)}</span>`;
+}
+
 function customerName(c) {
   if (c.kind === "company") return c.company_name || "(firma)";
   return [c.first_name, c.last_name].filter(Boolean).join(" ") || "(bez nazwy)";
@@ -265,7 +275,7 @@ function renderRepairs(items) {
           <span class="badge badge-${r.status}">${statusLabel(r.status)}</span>
           <span>📅 Przyjęto: ${fmtDate(r.received_at)}</span>
           ${r.completed_at ? `<span>✓ Zakończono: ${fmtDate(r.completed_at)}</span>` : ""}
-          ${r.grand_total ? `<span>💰 ${fmtMoney(r.grand_total)}</span>` : ""}
+          ${repairListMoneyHtml(r)}
         </div>
       </div>
       <div class="list-item-actions">
@@ -813,14 +823,6 @@ async function openRepairForm(existing = null, formDataOverride = null) {
         <h3 class="items-summary-heading">Rozliczenie</h3>
         <div class="items-summary-grid">
           <div class="items-summary-block">
-            <div class="items-summary-label">Przychód</div>
-            <div class="items-summary-totals">
-              <span>Części: <strong>${fmtMoney(repairTotals.parts)}</strong></span>
-              <span>Robocizna: <strong>${fmtMoney(repairTotals.labor)}</strong></span>
-              <span class="items-summary-grand">Razem: <strong>${fmtMoney(repairTotals.grand)}</strong></span>
-            </div>
-          </div>
-          <div class="items-summary-block">
             <div class="items-summary-label">Koszty</div>
             <div class="items-summary-totals">
               <span>Części: <strong>${fmtMoney(repairTotals.purchaseParts)}</strong></span>
@@ -834,6 +836,14 @@ async function openRepairForm(existing = null, formDataOverride = null) {
               <span>Części: <strong>${fmtMoney(repairTotals.parts - repairTotals.purchaseParts)}</strong></span>
               <span>Robocizna: <strong>${fmtMoney(repairTotals.labor - repairTotals.purchaseLabor)}</strong></span>
               <span class="items-summary-grand">Razem: <strong>${fmtMoney(repairTotals.grand - repairTotals.purchase)}</strong></span>
+            </div>
+          </div>
+          <div class="items-summary-block">
+            <div class="items-summary-label">Razem</div>
+            <div class="items-summary-totals">
+              <span>Części: <strong>${fmtMoney(repairTotals.parts)}</strong></span>
+              <span>Robocizna: <strong>${fmtMoney(repairTotals.labor)}</strong></span>
+              <span class="items-summary-grand">Razem: <strong>${fmtMoney(repairTotals.grand)}</strong></span>
             </div>
           </div>
         </div>
