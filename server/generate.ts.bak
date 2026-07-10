@@ -263,10 +263,6 @@ const parseLlmResponse = (
     slides: ProjectSlide[];
   };
 
-  if (!Array.isArray(parsed.slides)) {
-    throw new Error(`${provider} returned JSON without a valid slides array.`);
-  }
-
   const merged = input.preserveSlideCopy
     ? mergeLlmSlidesForFlow(input.slides, parsed.slides)
     : mergeLlmSlides(input.slides, parsed.slides);
@@ -317,30 +313,8 @@ const parseDescriptionsResponse = (
   content: string,
 ): ProjectSlide[] => {
   const parsed = JSON.parse(content) as { slides: ProjectSlide[] };
-  if (!Array.isArray(parsed.slides)) {
-    throw new Error("AI returned JSON without a valid slides array.");
-  }
-  return mergeLlmSlides(input.slides, parsed.slides).map(formatMagazineCopy);
+  return mergeLlmSlides(input.slides, parsed.slides ?? []).map(formatMagazineCopy);
 };
-
-
-const DEFAULT_LLM_TIMEOUT_MS = 75_000;
-
-const getLlmTimeoutMs = (): number => {
-  const configured = Number(process.env.FLOW_AI_TIMEOUT_MS ?? DEFAULT_LLM_TIMEOUT_MS);
-  if (!Number.isFinite(configured)) {
-    return DEFAULT_LLM_TIMEOUT_MS;
-  }
-  return Math.max(5_000, Math.min(configured, 180_000));
-};
-
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
-
-const isAbortLikeError = (error: unknown): boolean =>
-  error instanceof Error &&
-  (error.name === "AbortError" ||
-    /aborted|abort|timeout|timed out/i.test(error.message));
 
 const callLlmJson = async (
   config: LlmConfig,
@@ -348,64 +322,32 @@ const callLlmJson = async (
   user: string,
   temperature = resolveFlowTemperature(),
 ): Promise<string> => {
-  const timeoutMs = getLlmTimeoutMs();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const startedAt = Date.now();
+  const response = await fetch(`${config.baseUrl}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      temperature,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    }),
+  });
 
-  try {
-    console.info(
-      `[flow-ai] ${config.provider}/${config.model} request started; timeout=${timeoutMs}ms`,
-    );
-
-    const response = await fetch(`${config.baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: config.model,
-        temperature,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(
-        `${config.provider} API error: ${response.status} ${text.slice(0, 2_000)}`,
-      );
-    }
-
-    const data = (await response.json()) as {
-      choices?: { message?: { content?: string | null } }[];
-    };
-    const content = data.choices?.[0]?.message?.content?.trim();
-
-    if (!content) {
-      throw new Error(`${config.provider} returned an empty response.`);
-    }
-
-    console.info(
-      `[flow-ai] ${config.provider}/${config.model} completed in ${Date.now() - startedAt}ms`,
-    );
-    return content;
-  } catch (error) {
-    if (isAbortLikeError(error) || controller.signal.aborted) {
-      throw new Error(
-        `${config.provider} request timed out after ${timeoutMs}ms`,
-      );
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`${config.provider} API error: ${response.status} ${text}`);
   }
+
+  const data = (await response.json()) as {
+    choices: { message: { content: string } }[];
+  };
+  return data.choices[0].message.content;
 };
 
 const getLlmConfig = (): LlmConfig | null => {
@@ -494,11 +436,7 @@ export const generateWithLlm = async (
 export const generateProject = async (
   input: GenerateInput,
 ): Promise<ProjectManifest> => {
-  const totalStartedAt = Date.now();
-  const flowInput: GenerateInput = {
-    ...input,
-    preserveSlideCopy: true,
-  };
+  const flowInput: GenerateInput = { ...input, preserveSlideCopy: true };
   const ai = getAiStatus();
   let manifest: ProjectManifest;
 
@@ -506,7 +444,6 @@ export const generateProject = async (
     manifest = generateHeuristic(flowInput);
   } else {
     const config = getLlmConfig();
-
     if (!config) {
       manifest = generateHeuristic(flowInput);
     } else {
@@ -514,42 +451,36 @@ export const generateProject = async (
         manifest = await generateWithLlm(flowInput, config);
       } catch (primaryError) {
         const alternate = getAlternateLlmConfig(config.provider);
-
-        console.warn(
-          `[flow-ai] Primary provider failed (${config.provider}): ${formatError(primaryError)}`,
-        );
-
         if (!alternate) {
-          console.warn(
-            "[flow-ai] No alternate provider configured. Using heuristic fallback.",
+          throw primaryError;
+        }
+        console.warn(
+          "Primary LLM failed, trying alternate provider:",
+          primaryError instanceof Error ? primaryError.message : primaryError,
+        );
+        try {
+          manifest = await generateWithLlm(flowInput, alternate);
+        } catch (alternateError) {
+          const primaryMessage =
+            primaryError instanceof Error ? primaryError.message : String(primaryError);
+          const alternateMessage =
+            alternateError instanceof Error
+              ? alternateError.message
+              : String(alternateError);
+          throw new Error(
+            `AI niedostępne (${config.provider}: ${primaryMessage}; ${alternate.provider}: ${alternateMessage})`,
           );
-          manifest = generateHeuristic(flowInput);
-        } else {
-          try {
-            manifest = await generateWithLlm(flowInput, alternate);
-          } catch (alternateError) {
-            console.warn(
-              `[flow-ai] Alternate provider failed (${alternate.provider}): ${formatError(alternateError)}`,
-            );
-            console.warn(
-              "[flow-ai] Both providers failed. Using heuristic fallback.",
-            );
-            manifest = generateHeuristic(flowInput);
-          }
         }
       }
     }
   }
 
-  const syncStartedAt = Date.now();
   const synced = await applyMusicSync(manifest, flowInput, ROOT);
-  console.info(`[flow] music sync completed in ${Date.now() - syncStartedAt}ms`);
-
   const montageSeed = hashStringSeed(
     `${input.prompt}|${synced.slides.map((s) => s.image).join("|")}|${synced.generatedAt}|${Date.now()}`,
   );
 
-  const result = {
+  return {
     ...synced,
     slides: applySlideMontage(synced.slides, input.prompt, {
       allowedTransitions:
@@ -559,12 +490,6 @@ export const generateProject = async (
       seed: montageSeed,
     }),
   };
-
-  console.info(
-    `[flow] project generation completed in ${Date.now() - totalStartedAt}ms; generatedBy=${result.generatedBy}`,
-  );
-
-  return result;
 };
 
 export const writeProject = (
