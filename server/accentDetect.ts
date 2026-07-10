@@ -7,12 +7,6 @@ const HOP_SIZE = 512;
 const FRAME_SIZE = 2048;
 const MIN_ACCENT_GAP_SECONDS = 0.13;
 
-const median = (values: number[]) => {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
-};
-
 const frameToSeconds = (frame: number, sampleRate: number) =>
   (frame * HOP_SIZE) / sampleRate;
 
@@ -30,22 +24,38 @@ const rmsAt = (
 
   let sum = 0;
   for (let i = start; i < end; i++) {
-    sum += samples[i] * samples[i];
+    const sample = samples[i];
+    sum += sample * sample;
   }
   return Math.sqrt(sum / (end - start));
 };
 
 const normalizeCurve = (values: Float32Array): Float32Array => {
   if (values.length === 0) return values;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i];
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+
   const span = Math.max(max - min, 1e-6);
-  return Float32Array.from(values, (value) => (value - min) / span);
+  const normalized = new Float32Array(values.length);
+  for (let i = 0; i < values.length; i++) {
+    normalized[i] = (values[i] - min) / span;
+  }
+  return normalized;
 };
 
-/** Energia + pochodna — bazowy onset. */
-const computeEnergyOnsetStrength = (samples: Float32Array): Float32Array => {
-  const frameCount = Math.floor((samples.length - FRAME_SIZE) / HOP_SIZE);
+const computeEnergyOnsetStrength = (
+  samples: Float32Array,
+): Float32Array => {
+  const frameCount = Math.max(
+    0,
+    Math.floor((samples.length - FRAME_SIZE) / HOP_SIZE),
+  );
   const energy = new Float32Array(frameCount);
   const strength = new Float32Array(frameCount);
 
@@ -67,21 +77,26 @@ const computeEnergyOnsetStrength = (samples: Float32Array): Float32Array => {
   return strength;
 };
 
-/** Transjenty wysokiej częstotliwości — „bum”, „dam”, uderzenia. */
-const computeTransientStrength = (samples: Float32Array): Float32Array => {
-  const frameCount = Math.floor((samples.length - FRAME_SIZE) / HOP_SIZE);
+const computeTransientStrength = (
+  samples: Float32Array,
+): Float32Array => {
+  const frameCount = Math.max(
+    0,
+    Math.floor((samples.length - FRAME_SIZE) / HOP_SIZE),
+  );
   const strength = new Float32Array(frameCount);
+  const shortWindow = Math.min(128, FRAME_SIZE - 1);
 
   for (let i = 0; i < frameCount; i++) {
     const start = i * HOP_SIZE;
     let shortSum = 0;
     let derivSum = 0;
-    const shortWindow = Math.min(128, FRAME_SIZE - 1);
 
     for (let j = 0; j < shortWindow; j++) {
       const sample = samples[start + j];
+      const next = samples[start + j + 1];
       shortSum += sample * sample;
-      const delta = sample - samples[start + j + 1];
+      const delta = sample - next;
       derivSum += delta * delta;
     }
 
@@ -109,29 +124,50 @@ const combineStrengthCurves = (
   return combined;
 };
 
+/**
+ * O(n) peak picker.
+ *
+ * The old implementation allocated and sorted a ~2.8-second window for
+ * virtually every frame. This version uses rolling sums and variance, which
+ * removes thousands of array copies/sorts on a typical song.
+ */
 const pickProminentPeaks = (
   strength: Float32Array,
   sampleRate: number,
 ): number[] => {
-  const minDistance = Math.max(1, Math.round(MIN_ACCENT_GAP_SECONDS / (HOP_SIZE / sampleRate)));
-  const rollingWindow = Math.max(
-    8,
-    Math.round(2.8 / (HOP_SIZE / sampleRate)),
+  if (strength.length < 5) return [];
+
+  const frameSeconds = HOP_SIZE / sampleRate;
+  const minDistance = Math.max(
+    1,
+    Math.round(MIN_ACCENT_GAP_SECONDS / frameSeconds),
   );
+  const radius = Math.max(8, Math.round(1.4 / frameSeconds));
+  const prefix = new Float64Array(strength.length + 1);
+  const prefixSquares = new Float64Array(strength.length + 1);
+
+  for (let i = 0; i < strength.length; i++) {
+    const value = strength[i];
+    prefix[i + 1] = prefix[i] + value;
+    prefixSquares[i + 1] = prefixSquares[i] + value * value;
+  }
+
   const peaks: number[] = [];
 
   for (let i = 2; i < strength.length - 2; i++) {
+    const start = Math.max(0, i - radius);
+    const end = Math.min(strength.length, i + radius + 1);
+    const count = Math.max(1, end - start);
+    const sum = prefix[end] - prefix[start];
+    const sumSquares = prefixSquares[end] - prefixSquares[start];
+    const localMean = sum / count;
+    const variance = Math.max(0, sumSquares / count - localMean * localMean);
+    const localStd = Math.sqrt(variance);
     const value = strength[i];
-    const window = strength.slice(
-      Math.max(0, i - rollingWindow),
-      Math.min(strength.length, i + rollingWindow + 1),
-    );
-    const localMedian = median([...window]);
-    const localMax = Math.max(...window);
-    const threshold = localMedian * 1.62 + localMax * 0.24;
-    if (value < threshold) continue;
-    const prominence = value - localMedian;
-    if (prominence < localMax * 0.16) continue;
+
+    // Adaptive threshold; intentionally conservative to keep only montage-useful accents.
+    const threshold = localMean + localStd * 1.15;
+    if (value < threshold || value < 0.08) continue;
 
     if (
       value >= strength[i - 1] &&
@@ -139,9 +175,10 @@ const pickProminentPeaks = (
       value >= strength[i + 1] &&
       value >= strength[i + 2]
     ) {
-      if (peaks.length === 0 || i - peaks[peaks.length - 1] >= minDistance) {
+      const last = peaks[peaks.length - 1];
+      if (last === undefined || i - last >= minDistance) {
         peaks.push(i);
-      } else if (value > strength[peaks[peaks.length - 1]]) {
+      } else if (value > strength[last]) {
         peaks[peaks.length - 1] = i;
       }
     }
@@ -166,24 +203,34 @@ const scoreAccentAt = (
   const loudnessRatio =
     contextRms > 1e-5 ? Math.min(3.5, localRms / contextRms) / 3.5 : 0.4;
   const attackRms = rmsAt(samples, sampleRate, timeSeconds, 0.018);
-  const attackBoost = contextRms > 1e-5 ? Math.min(1, attackRms / contextRms) : 0.3;
+  const attackBoost =
+    contextRms > 1e-5 ? Math.min(1, attackRms / contextRms) : 0.3;
 
   return Math.min(
     1,
-    Math.max(0.05, curveStrength * 0.5 + loudnessRatio * 0.3 + attackBoost * 0.2),
+    Math.max(
+      0.05,
+      curveStrength * 0.5 + loudnessRatio * 0.3 + attackBoost * 0.2,
+    ),
   );
 };
 
 const mergeAccentPoints = (points: AccentPoint[]): AccentPoint[] => {
-  const sorted = [...points].sort((a, b) => a.timeSeconds - b.timeSeconds);
+  const sorted = [...points].sort(
+    (a, b) => a.timeSeconds - b.timeSeconds,
+  );
   const merged: AccentPoint[] = [];
 
   for (const point of sorted) {
     const last = merged[merged.length - 1];
-    if (!last || point.timeSeconds - last.timeSeconds > MIN_ACCENT_GAP_SECONDS) {
+    if (
+      !last ||
+      point.timeSeconds - last.timeSeconds > MIN_ACCENT_GAP_SECONDS
+    ) {
       merged.push(point);
       continue;
     }
+
     if (point.strength > last.strength) {
       merged[merged.length - 1] = point;
     }
@@ -192,15 +239,25 @@ const mergeAccentPoints = (points: AccentPoint[]): AccentPoint[] => {
   return merged;
 };
 
-const normalizeAccentStrengths = (points: AccentPoint[]): AccentPoint[] => {
+const normalizeAccentStrengths = (
+  points: AccentPoint[],
+): AccentPoint[] => {
   if (points.length === 0) return points;
-  const values = points.map((point) => point.strength);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    if (point.strength < min) min = point.strength;
+    if (point.strength > max) max = point.strength;
+  }
+
   const span = Math.max(max - min, 1e-6);
   return points.map((point) => ({
     ...point,
-    strength: Math.min(1, Math.max(0, (point.strength - min) / span)),
+    strength: Math.min(
+      1,
+      Math.max(0, (point.strength - min) / span),
+    ),
   }));
 };
 
@@ -210,7 +267,9 @@ const thinAccentPoints = (
 ): AccentPoint[] => {
   if (points.length <= 1) return points;
 
-  const sorted = [...points].sort((a, b) => a.timeSeconds - b.timeSeconds);
+  const sorted = [...points].sort(
+    (a, b) => a.timeSeconds - b.timeSeconds,
+  );
   const kept: AccentPoint[] = [];
   let windowStart = sorted[0].timeSeconds;
   let bucket: AccentPoint[] = [];
@@ -219,6 +278,7 @@ const thinAccentPoints = (
     if (!bucket.length) return;
     bucket.sort((a, b) => b.strength - a.strength);
     kept.push(bucket[0]);
+
     if (
       bucket[1] &&
       bucket[1].strength >= 0.62 &&
@@ -226,6 +286,7 @@ const thinAccentPoints = (
     ) {
       kept.push(bucket[1]);
     }
+
     bucket = [];
   };
 
@@ -236,8 +297,8 @@ const thinAccentPoints = (
     }
     bucket.push(point);
   }
-  flush();
 
+  flush();
   return kept.sort((a, b) => a.timeSeconds - b.timeSeconds);
 };
 
@@ -251,6 +312,7 @@ export const detectAccentsFromSamples = (
   accentPoints: AccentPoint[];
   onsetTimesSeconds: number[];
 } => {
+  const startedAt = Date.now();
   const energy = computeEnergyOnsetStrength(samples);
   const transient = computeTransientStrength(samples);
   const combined = combineStrengthCurves(energy, transient);
@@ -260,17 +322,30 @@ export const detectAccentsFromSamples = (
     const timeSeconds = frameToSeconds(frame, sampleRate);
     return {
       timeSeconds,
-      strength: scoreAccentAt(samples, sampleRate, timeSeconds, combined[frame]),
+      strength: scoreAccentAt(
+        samples,
+        sampleRate,
+        timeSeconds,
+        combined[frame],
+      ),
     };
   });
 
   for (const timeSeconds of extraOnsets) {
     if (timeSeconds < 0 || timeSeconds > durationSeconds + 0.05) continue;
+
     const frame = Math.round((timeSeconds * sampleRate) / HOP_SIZE);
-    const curveStrength = combined[Math.min(Math.max(frame, 0), combined.length - 1)] ?? 0.4;
+    const curveStrength =
+      combined[Math.min(Math.max(frame, 0), combined.length - 1)] ?? 0.4;
+
     accentCandidates.push({
       timeSeconds,
-      strength: scoreAccentAt(samples, sampleRate, timeSeconds, curveStrength * 0.85),
+      strength: scoreAccentAt(
+        samples,
+        sampleRate,
+        timeSeconds,
+        curveStrength * 0.85,
+      ),
     });
   }
 
@@ -292,7 +367,12 @@ export const detectAccentsFromSamples = (
     Number(point.timeSeconds.toFixed(4)),
   );
 
-  return { accentPoints, onsetTimesSeconds };
+  console.info(
+    `[audio] accent analysis completed in ${Date.now() - startedAt}ms; ` +
+      `frames=${combined.length}; accents=${accentPoints.length}`,
+  );
+
+  return {accentPoints, onsetTimesSeconds};
 };
 
 export const accentStrengthNear = (
@@ -301,12 +381,15 @@ export const accentStrengthNear = (
   windowSeconds = 0.12,
 ): number => {
   let best = 0;
+
   for (const point of accentPoints) {
     const distance = Math.abs(point.timeSeconds - timeSeconds);
     if (distance > windowSeconds) continue;
+
     const weight = 1 - distance / windowSeconds;
     best = Math.max(best, point.strength * weight);
   }
+
   return best;
 };
 
@@ -316,7 +399,9 @@ export const buildBeatStrengthsFromAccents = (
   samples: Float32Array,
   sampleRate: number,
 ): number[] => {
-  const rmsValues = beats.map((time) => rmsAt(samples, sampleRate, time, 0.08));
+  const rmsValues = beats.map((time) =>
+    rmsAt(samples, sampleRate, time, 0.08),
+  );
   const rmsNorm = normalizeCurve(Float32Array.from(rmsValues));
 
   return beats.map((time, index) => {
@@ -330,4 +415,5 @@ export const buildBeatStrengthsFromAccents = (
 export const countStrongAccents = (
   accentPoints: AccentPoint[],
   threshold = 0.55,
-): number => accentPoints.filter((point) => point.strength >= threshold).length;
+): number =>
+  accentPoints.filter((point) => point.strength >= threshold).length;
