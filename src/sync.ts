@@ -1,3 +1,7 @@
+import {
+  computeTransitionForSlide,
+} from "./accentDriven";
+
 export type SlideTiming = {
   from: number;
   duration: number;
@@ -79,6 +83,38 @@ export type MusicSyncInfo = {
   /** Opóźnienie wejścia tekstu w taktach (0, 1, 2, 4, 6, 8, 10). */
   textEnterDelayBeats?: number;
   animationPhases?: import("./slideAnimation").AnimationPhases;
+  /** Segmenty utworu wykryte przez analizę dynamiki */
+  segments?: DynamicSegment[];
+  /** Punkty zmian w dynamice */
+  changePoints?: DynamicChangePoint[];
+  /** Krzywa głośności (downsampled) */
+  loudnessCurve?: number[];
+  /** Krzywa energii (downsampled) */
+  energyCurve?: number[];
+  /** Krzywa novelty (downsampled) */
+  noveltyCurve?: number[];
+  /** Danceability utworu (0-1) */
+  danceability?: number;
+  /** Dynamic complexity utworu (0-1) */
+  dynamicComplexity?: number;
+  /** Sugerowane przejścia na podstawie dynamiki */
+  suggestedTransitions?: import("./accentDriven").TransitionSuggestion[];
+};
+
+/** Segment utworu z etykietą */
+export type DynamicSegment = {
+  start: number;
+  end: number;
+  label: "intro" | "buildup" | "drop" | "verse" | "chorus" | "breakdown" | "outro" | "ambient";
+  energy: number;
+  intensity: number;
+};
+
+/** Punkt zmiany w dynamice utworu */
+export type DynamicChangePoint = {
+  time: number;
+  type: "drop" | "buildup" | "breakdown" | "climax" | "transition";
+  strength: number;
 };
 
 import { buildAnimationPhases } from "./slideAnimation";
@@ -704,6 +740,336 @@ export const computeAccentSync = (params: {
       analyzer: params.analyzer ?? "essentia",
       confidence: params.confidence,
       cutTimesSeconds: cutTimes,
+      animationPhases: {
+        ...buildAnimationPhases(avgBeatsRounded),
+        bangStrength: pickBangStrengthForAccent(
+          slideAccentStrengths.reduce((max, s) => Math.max(max, s), 0.4),
+        ),
+      },
+    },
+  };
+};
+
+/** Oblicza czas przejścia na podstawie segmentu i dynamiki */
+const getMomentTypeForSlide = (
+  slideStartTime: number,
+  segments?: DynamicSegment[],
+  changePoints?: DynamicChangePoint[],
+): "drop" | "buildup" | "breakdown" | "climax" | "standard" => {
+  if (!segments?.length) return "standard";
+  
+  // Sprawdź czy jesteśmy blisko punktu zmiany
+  const nearbyChange = changePoints?.find(
+    (cp) => Math.abs(cp.time - slideStartTime) < 1.5,
+  );
+  if (nearbyChange) {
+    return nearbyChange.type === "transition" ? "standard" : nearbyChange.type;
+  }
+  
+  // Znajdź segment dla tego slajdu
+  const segment = segments.find(
+    (s) => slideStartTime >= s.start && slideStartTime < s.end,
+  );
+  if (!segment) return "standard";
+  
+  switch (segment.label) {
+    case "drop":
+      return "drop";
+    case "buildup":
+      return "buildup";
+    case "breakdown":
+      return "breakdown";
+    case "chorus":
+      return segment.intensity > 0.7 ? "climax" : "standard";
+    default:
+      return "standard";
+  }
+};
+
+/** Pobiera intensywność dynamiki dla konkretnego czasu */
+const getDynamicIntensityAtTime = (
+  timeSeconds: number,
+  loudnessCurve?: number[],
+  energyCurve?: number[],
+): number => {
+  if (!loudnessCurve?.length || !energyCurve?.length) return 0.5;
+  
+  const duration = loudnessCurve.length;
+  const index = Math.min(Math.floor((timeSeconds / duration) * duration), duration - 1);
+  
+  return (loudnessCurve[index] + energyCurve[index]) / 2;
+};
+
+/** Główna funkcja synchronizacji z pełną analizą dynamiki */
+export const computeDynamicSync = (params: {
+  slideCount: number;
+  fps: number;
+  audioDurationSeconds: number;
+  beatTimesSeconds: number[];
+  beatStrengths: number[];
+  slideBeats: number[];
+  bpm: number;
+  analyzer?: "essentia" | "legacy";
+  confidence?: number;
+  allowedTransitions?: TransitionType[];
+  /** Dane dynamiki z rozszerzonej analizy */
+  dynamics?: {
+    segments?: DynamicSegment[];
+    changePoints?: DynamicChangePoint[];
+    loudnessCurve?: number[];
+    energyCurve?: number[];
+    noveltyCurve?: number[];
+    danceability?: number;
+    dynamicComplexity?: number;
+  };
+}): {
+  slideTimings: SlideTiming[];
+  transitionDuration: number;
+  slideDuration: number;
+  totalDurationFrames: number;
+  slideAccentStrengths: number[];
+  slideTransitions: (TransitionType | undefined)[];
+  slideTransitionDurations: number[];
+  sync: MusicSyncInfo;
+} => {
+  const slideCount = params.slideCount;
+  const beats = params.beatTimesSeconds.filter(
+    (t) => t >= 0 && t <= params.audioDurationSeconds + 0.05,
+  );
+  const strengths =
+    params.beatStrengths.length === beats.length
+      ? params.beatStrengths
+      : beats.map(() => 0.4);
+  
+  const { segments, changePoints, loudnessCurve, energyCurve, noveltyCurve, danceability, dynamicComplexity } = params.dynamics || {};
+
+  if (slideCount <= 0) {
+    return {
+      slideTimings: [],
+      transitionDuration: 20,
+      slideDuration: 90,
+      totalDurationFrames: 0,
+      slideAccentStrengths: [],
+      slideTransitions: [],
+      slideTransitionDurations: [],
+      sync: {
+        enabled: false,
+        mode: "beats",
+        audioDurationSeconds: params.audioDurationSeconds,
+        bpm: params.bpm,
+        beatsPerSlide: params.slideBeats[0] ?? 16,
+        framesPerBeat: null,
+        beatCount: 0,
+        analyzer: params.analyzer,
+        segments,
+        changePoints,
+        loudnessCurve,
+        energyCurve,
+        noveltyCurve,
+        danceability,
+        dynamicComplexity,
+      },
+    };
+  }
+
+  if (slideCount === 1) {
+    const beatIntervalSeconds =
+      beats.length > 1 ? beats[1] - beats[0] : 60 / params.bpm;
+    const getBeatTimeAtIndex = (beatIndex: number) => {
+      if (beatIndex < beats.length) return beats[beatIndex];
+      const lastBeat = beats[beats.length - 1] ?? 0;
+      return lastBeat + (beatIndex - beats.length + 1) * beatIntervalSeconds;
+    };
+    const slideBeats = clampBeats(params.slideBeats[0] ?? 16);
+    const duration = Math.max(
+      1,
+      Math.round(getBeatTimeAtIndex(slideBeats) * params.fps),
+    );
+    const slideTimings = [{ from: 0, duration }];
+    return {
+      slideTimings,
+      transitionDuration: 0,
+      slideDuration: duration,
+      totalDurationFrames: totalWithOutro(slideTimings, params.fps, params.audioDurationSeconds),
+      slideAccentStrengths: [strengths[0] ?? 0.4],
+      slideTransitions: [undefined],
+      slideTransitionDurations: [0],
+      sync: {
+        enabled: true,
+        mode: "beats",
+        audioDurationSeconds: params.audioDurationSeconds,
+        bpm: params.bpm,
+        beatsPerSlide: slideBeats,
+        framesPerBeat: Math.round(beatIntervalSeconds * params.fps),
+        beatCount: beats.length,
+        beatTimesSeconds: beats,
+        accentCount: strengths.filter((s) => s >= 0.55).length,
+        analyzer: params.analyzer,
+        confidence: params.confidence,
+        segments,
+        changePoints,
+        loudnessCurve,
+        energyCurve,
+        noveltyCurve,
+        danceability,
+        dynamicComplexity,
+      },
+    };
+  }
+
+  const beatIntervalSeconds =
+    beats.length > 1 ? beats[1] - beats[0] : 60 / params.bpm;
+  const defaultTransitionDuration = Math.max(
+    8,
+    Math.min(Math.round(0.45 * beatIntervalSeconds * params.fps), 24),
+  );
+
+  let slideBeats = fitSlideBeatsToBudget(
+    params.slideBeats.map(clampBeats),
+    beats.length,
+  );
+  while (slideBeats.length < slideCount) {
+    slideBeats.push(slideBeats[slideBeats.length - 1] ?? 16);
+  }
+  slideBeats = slideBeats.slice(0, slideCount);
+
+  const avgBeats =
+    slideBeats.reduce((sum, b) => sum + b, 0) / Math.max(slideCount, 1);
+  const tempo = getTempoProfile(Math.round(avgBeats));
+
+  const cutTimes: number[] = [0];
+  const cutBeatIndices: number[] = [0];
+  let beatCursor = 0;
+
+  for (let slideIndex = 0; slideIndex < slideCount - 1; slideIndex++) {
+    const idealBeat = beatCursor + slideBeats[slideIndex];
+    beatCursor = pickBeatForSlide(
+      idealBeat,
+      beatCursor,
+      strengths,
+      beats.length,
+      tempo.strictRhythm,
+    );
+    cutTimes.push(beats[beatCursor]);
+    cutBeatIndices.push(beatCursor);
+  }
+
+  const getBeatTimeAtIndex = (beatIndex: number) => {
+    if (beatIndex < beats.length) return beats[beatIndex];
+    const lastBeat = beats[beats.length - 1] ?? 0;
+    return lastBeat + (beatIndex - beats.length + 1) * beatIntervalSeconds;
+  };
+
+  const slideAccentStrengths: number[] = [];
+  const slideTransitions: (TransitionType | undefined)[] = [];
+  const slideTransitionDurations: number[] = [];
+  const slideTimings: SlideTiming[] = [];
+  const suggestedTransitions: import("./accentDriven").TransitionSuggestion[] = [];
+
+  for (let i = 0; i < slideCount; i++) {
+    const slideStartTime = cutTimes[i] ?? 0;
+    const enterStrength =
+      i === 0 ? 0.4 : strengths[cutBeatIndices[i]] ?? 0.45;
+    const exitStrength =
+      i < slideCount - 1
+        ? strengths[cutBeatIndices[i + 1]] ?? 0.45
+        : enterStrength;
+    
+    // Pobierz dane dynamiki dla tego momentu
+    const momentType = getMomentTypeForSlide(slideStartTime, segments, changePoints);
+    const dynamicIntensity = getDynamicIntensityAtTime(slideStartTime, loudnessCurve, energyCurve);
+    
+    // Oblicz przejście na podstawie dynamiki
+    const framesPerBeat = Math.round(beatIntervalSeconds * params.fps);
+    const suggestion = computeTransitionForSlide(
+      exitStrength,
+      momentType,
+      dynamicIntensity,
+      framesPerBeat,
+      i,
+      params.allowedTransitions,
+    );
+    suggestedTransitions.push(suggestion);
+    
+    slideAccentStrengths.push(suggestion.strength);
+
+    let transitionDuration =
+      i === slideCount - 1 ? 0 : suggestion.duration;
+    if (i < slideCount - 1) {
+      transitionDuration = Math.max(
+        tempo.transitionMinFrames,
+        Math.min(
+          tempo.transitionMaxFrames,
+          transitionDuration,
+        ),
+      );
+    }
+    slideTransitionDurations.push(transitionDuration);
+
+    slideTransitions.push(
+      i === 0
+        ? undefined
+        : suggestion.transition,
+    );
+
+    const enterOverlap =
+      i === 0 ? 0 : slideTransitionDurations[i - 1] ?? transitionDuration;
+    const from =
+      i === 0
+        ? 0
+        : Math.max(0, Math.round(cutTimes[i] * params.fps) - enterOverlap);
+    const endFrame =
+      i === slideCount - 1
+        ? Math.round(
+            getBeatTimeAtIndex(
+              (cutBeatIndices[slideCount - 1] ?? 0) + slideBeats[slideCount - 1],
+            ) * params.fps,
+          )
+        : Math.round(cutTimes[i + 1] * params.fps);
+    slideTimings.push({
+      from,
+      duration: Math.max(endFrame - from, enterOverlap + 1),
+    });
+  }
+
+  const avgBeatsRounded = Math.round(avgBeats);
+  const avgDuration = Math.round(
+    slideTimings.reduce((sum, t) => sum + t.duration, 0) / slideCount,
+  );
+  const durations = slideTransitionDurations.filter((value) => value > 0);
+  const avgTransition = durations.length
+    ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length)
+    : defaultTransitionDuration;
+
+  return {
+    slideTimings,
+    transitionDuration: avgTransition,
+    slideDuration: avgDuration,
+    totalDurationFrames: totalWithOutro(slideTimings, params.fps, params.audioDurationSeconds),
+    slideAccentStrengths,
+    slideTransitions,
+    slideTransitionDurations,
+    sync: {
+      enabled: true,
+      mode: "beats",
+      audioDurationSeconds: params.audioDurationSeconds,
+      bpm: params.bpm,
+      beatsPerSlide: avgBeatsRounded,
+      framesPerBeat: Math.round(beatIntervalSeconds * params.fps),
+      beatCount: beats.length,
+      beatTimesSeconds: beats,
+      accentCount: strengths.filter((s) => s >= 0.55).length,
+      analyzer: params.analyzer ?? "essentia",
+      confidence: params.confidence,
+      cutTimesSeconds: cutTimes,
+      segments,
+      changePoints,
+      loudnessCurve,
+      energyCurve,
+      noveltyCurve,
+      danceability,
+      dynamicComplexity,
+      suggestedTransitions,
       animationPhases: {
         ...buildAnimationPhases(avgBeatsRounded),
         bangStrength: pickBangStrengthForAccent(

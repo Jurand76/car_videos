@@ -5,6 +5,7 @@ import type { TextEffect } from "../src/effects/textEffects";
 import type { FlowAiConfig } from "../src/projectTypes";
 import {
   computeAccentSync,
+  computeDynamicSync,
   computeMusicSync,
   getLastSlideTailFrames,
   getOutroDurationFrames,
@@ -124,21 +125,47 @@ export const applyMusicSync = async (
                 : input.beatTimesSeconds.map(() => 0.5),
             analyzer: input.analyzer ?? "legacy",
             confidence: input.confidence ?? 0.5,
+            dynamics: undefined,
           }
         : await analyzeAudioFromPublic(root, input.audio);
-      const syncResult = computeAccentSync({
-        slideCount: manifest.slides.length,
-        fps: manifest.fps,
-        audioDurationSeconds,
-        beatTimesSeconds: analysis.beatTimesSeconds,
-        beatStrengths: analysis.beatStrengths,
-        slideBeats,
-        bpm: input.bpm ?? analysis.bpm,
-        analyzer: analysis.analyzer,
-        confidence: analysis.confidence,
-        allowedTransitions:
-          manifest.allowedTransitions ?? input.allowedTransitions,
-      });
+      
+      // Użyj computeDynamicSync jeśli mamy dane dynamiki, w przeciwnym razie fallback do computeAccentSync
+      const syncResult = analysis.dynamics
+        ? computeDynamicSync({
+            slideCount: manifest.slides.length,
+            fps: manifest.fps,
+            audioDurationSeconds,
+            beatTimesSeconds: analysis.beatTimesSeconds,
+            beatStrengths: analysis.beatStrengths,
+            slideBeats,
+            bpm: input.bpm ?? analysis.bpm,
+            analyzer: analysis.analyzer,
+            confidence: analysis.confidence,
+            allowedTransitions:
+              manifest.allowedTransitions ?? input.allowedTransitions,
+            dynamics: {
+              segments: analysis.dynamics.segments,
+              changePoints: analysis.dynamics.changePoints,
+              loudnessCurve: analysis.dynamics.loudness,
+              energyCurve: analysis.dynamics.energy,
+              noveltyCurve: analysis.dynamics.noveltyCurve,
+              danceability: analysis.dynamics.danceability,
+              dynamicComplexity: analysis.dynamics.dynamicComplexity,
+            },
+          })
+        : computeAccentSync({
+            slideCount: manifest.slides.length,
+            fps: manifest.fps,
+            audioDurationSeconds,
+            beatTimesSeconds: analysis.beatTimesSeconds,
+            beatStrengths: analysis.beatStrengths,
+            slideBeats,
+            bpm: input.bpm ?? analysis.bpm,
+            analyzer: analysis.analyzer,
+            confidence: analysis.confidence,
+            allowedTransitions:
+              manifest.allowedTransitions ?? input.allowedTransitions,
+          });
 
       return {
         ...manifest,

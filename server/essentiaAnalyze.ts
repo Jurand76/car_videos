@@ -1,3 +1,4 @@
+// @ts-ignore - essentia.js nie ma typów
 import { EssentiaWASM, Essentia } from "essentia.js";
 import {
   accentStrengthNear,
@@ -6,10 +7,12 @@ import {
   type AccentPoint,
 } from "./accentDetect";
 import { decodeAudioToMono } from "./beatDetect";
+import { analyzeDynamics, type DynamicFeatures } from "./dynamicAnalysis";
 
 const ESSENTIA_SAMPLE_RATE = 44100;
 
 export type { AccentPoint };
+export type { DynamicFeatures } from "./dynamicAnalysis";
 
 export type BeatAnalysis = {
   bpm: number;
@@ -19,6 +22,8 @@ export type BeatAnalysis = {
   onsetTimesSeconds: number[];
   confidence: number;
   analyzer: "essentia" | "legacy";
+  /** Rozszerzona analiza dynamiki */
+  dynamics?: DynamicFeatures;
 };
 
 let essentiaInstance: Essentia | null = null;
@@ -100,6 +105,14 @@ export const analyzeWithEssentia = async (
     return Math.min(1, Math.max(baseStrength, accent * 0.95));
   });
 
+  // Analiza dynamiki utworu
+  let dynamics: DynamicFeatures | undefined;
+  try {
+    dynamics = await analyzeDynamics(filePath, durationSeconds);
+  } catch (error) {
+    console.warn("Dynamic analysis failed:", error instanceof Error ? error.message : error);
+  }
+
   return {
     bpm: Math.round(bpm),
     beatTimesSeconds: beats,
@@ -108,5 +121,6 @@ export const analyzeWithEssentia = async (
     onsetTimesSeconds,
     confidence,
     analyzer: "essentia",
+    dynamics,
   };
 };

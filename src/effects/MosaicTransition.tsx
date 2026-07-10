@@ -14,7 +14,6 @@ import {
   blockSizeToHalvingLevel,
   getMosaicBlockSizeForLocalFrame,
   getMosaicOpacityForLocalFrame,
-  getMosaicTransitionFrames,
   isMosaicActiveLocalFrame,
   type MosaicRole,
 } from "./mosaicSchedule";
@@ -43,7 +42,6 @@ const MosaicCanvasImage: React.FC<{
   width: number;
   height: number;
 }> = ({ image, blockSize, width, height }) => {
-  const frame = useCurrentFrame();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [levels, setLevels] = useState<HTMLCanvasElement[] | null>(null);
   const maxLevel = getMosaicMaxHalvingLevel();

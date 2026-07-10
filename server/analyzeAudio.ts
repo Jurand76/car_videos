@@ -4,6 +4,7 @@ import { detectBeatsFromFile } from "./beatDetect";
 import { getAudioMeta } from "./audio";
 
 export type { AccentPoint, BeatAnalysis } from "./essentiaAnalyze";
+export type { DynamicFeatures } from "./dynamicAnalysis";
 
 export const analyzeAudioFromPublic = async (
   root: string,
@@ -37,4 +38,11 @@ export const analyzeAudioFile = async (
       title: meta.title,
     };
   }
+};
+
+/** Analiza audio z pełną dynamiką (główna funkcja dla Remotion) */
+export const analyzeAudioWithDynamics = async (
+  filePath: string,
+): Promise<BeatAnalysis & { durationSeconds: number; title: string | null }> => {
+  return analyzeAudioFile(filePath);
 };

@@ -62,7 +62,6 @@ const getTileMotion = (
   }
 
   const stagger = (col + row) / (cols + rows);
-  const local = ease((p - stagger * 0.35) / 0.65);
 
   if (variant === "tilesRadial") {
     const cx = cols / 2;
