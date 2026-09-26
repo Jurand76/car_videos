@@ -44,6 +44,7 @@ export type GeneratedFile = {
   source_item_id: string | null;
   label: string | null;
   created_at: string;
+  file_ext?: string;
 };
 
 export type OpenAiBilling = {

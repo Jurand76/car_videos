@@ -132,11 +132,20 @@
 .repair-row .list-item-actions { justify-content: flex-end; margin-left: 16px; }
 .repair-row:hover { background: #f0fdf4; border-color: #bbf7d0; }
 .month-income-label { color: #334155; font-weight: 600; }
+.month-head { cursor: pointer; user-select: none; }
+.month-head:hover .month-title { color: var(--green); }
+.month-chevron { display: inline-block; width: 1em; color: var(--muted); }
+.month-count { font-size: 0.8rem; font-weight: 500; color: var(--muted); text-transform: none; }
+/* Zwinięty miesiąc — kafelek do rozwinięcia */
+.month-head.month-head-collapsed { border-color: var(--border); border-radius: 10px; background: #f8fafc; }
+.month-head.month-head-collapsed:hover { background: #f0fdf4; border-color: #bbf7d0; }
+/* Te same wymiary rozwinięty/zwinięty — zmienia się tylko ramka i tło */
 .month-head {
-  margin-top: 14px; padding: 10px 17px 0; border-top: 1px solid var(--border);
+  margin-top: 14px; padding: 8px 16px; min-height: 44px; box-sizing: border-box;
+  border: 1px solid transparent; border-top-color: var(--border); border-radius: 0;
 }
 .month-head:first-child, .filter-banner + .month-head { margin-top: 0; }
-.month-title { margin: 0; font-size: 1.05rem; font-weight: 700; text-transform: capitalize; }
+.month-title { margin: 0; font-size: 1.05rem; font-weight: 700; line-height: 1.3; text-transform: capitalize; display: flex; align-items: center; gap: 6px; }
 .month-income { font-weight: 700; color: var(--green); font-size: 0.95rem; }
 /* Wydane — niski wiersz: nr, status, daty obok marki i rejestracji */
 .repair-row-compact { padding-top: 5px; padding-bottom: 5px; }

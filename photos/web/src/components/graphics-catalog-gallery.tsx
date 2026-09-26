@@ -68,14 +68,15 @@ function downloadName(file: GeneratedFile, index: number, kind: "single" | "seri
     .toLowerCase()
     .replace(/[^a-z0-9ąćęłńóśźż]+/gi, "-")
     .replace(/^-|-$/g, "");
+  const ext = file.file_ext || "png";
 
   if (kind === "single") {
     const date = new Date(file.created_at).toISOString().slice(0, 10);
-    return `${slug || "pojedyncze"}-${index + 1}-${date}.png`;
+    return `${slug || "pojedyncze"}-${index + 1}-${date}.${ext}`;
   }
 
   const category = file.series_category === "interior" ? "wnetrze" : "zewnatrz";
-  return `${slug || "seria"}-${category}-${index + 1}.png`;
+  return `${slug || "seria"}-${category}-${index + 1}.${ext}`;
 }
 
 function sortByNewest(files: GeneratedFile[]): GeneratedFile[] {

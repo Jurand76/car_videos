@@ -235,7 +235,10 @@ async function loadRepairs() {
   }
 }
 
+let lastRepairsInput = [];
+
 function renderRepairs(items) {
+  lastRepairsInput = items;
   const list = $("#repair-list");
   let banner = "";
   if (repairsFilterCar) {
@@ -248,16 +251,22 @@ function renderRepairs(items) {
     list.innerHTML = banner + `<div class="list-empty">Brak napraw. Dodaj pierwsze zlecenie przyciskiem powyżej.</div>`;
     return;
   }
-  list.innerHTML = banner + groupRepairsByMonth(items).map((g) => `
-    <div class="month-head">
-      <h2 class="month-title">${esc(g.label)}</h2>
+  list.innerHTML = banner + groupRepairsByMonth(items).map((g, index) => {
+    const open = monthOpen.has(g.key) ? monthOpen.get(g.key) : index < 2;
+    return `
+    <div class="month-head${open ? "" : " month-head-collapsed"}" data-toggle-month="${esc(g.key)}" data-month-open="${open ? "1" : "0"}">
+      <h2 class="month-title"><span class="month-chevron">${open ? "▾" : "▸"}</span> ${esc(g.label)} <span class="month-count">(${g.items.length})</span></h2>
       <span></span>
       <span></span>
       <span class="repair-amount month-income"><span class="month-income-label">dochód:</span> ${fmtMoney(g.income)}</span>
     </div>
-    ${g.items.map(repairItemHtml).join("")}
-  `).join("");
+    ${open ? g.items.map(repairItemHtml).join("") : ""}
+  `;
+  }).join("");
 }
+
+// Stan rozwinięcia miesięcy (klucz RRRR-MM); domyślnie otwarte tylko dwa najnowsze
+const monthOpen = new Map<string, boolean>();
 
 const MONTHS_PL = [
   "styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec",
@@ -278,6 +287,7 @@ function groupRepairsByMonth(items) {
       const key = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : "brak";
       if (!groups.has(key)) {
         groups.set(key, {
+          key,
           label: d ? `${MONTHS_PL[d.getMonth()]} ${d.getFullYear()}` : "Bez daty",
           income: 0,
           items: [],
@@ -1092,6 +1102,13 @@ async function handleClick(e: Event) {
     if (view === "cars") carsFilterCustomer = null;
     if (view === "repairs") repairsFilterCar = null;
     showView(view);
+    return;
+  }
+
+  const monthHead = target.closest("[data-toggle-month]");
+  if (monthHead) {
+    monthOpen.set(monthHead.getAttribute("data-toggle-month")!, monthHead.getAttribute("data-month-open") !== "1");
+    renderRepairs(lastRepairsInput);
     return;
   }
 

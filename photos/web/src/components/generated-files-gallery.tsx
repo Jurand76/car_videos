@@ -44,7 +44,7 @@ function downloadName(file: GeneratedFile) {
     .replace(/[^a-z0-9ąćęłńóśźż]+/gi, "-")
     .replace(/^-|-$/g, "");
   const date = new Date(file.created_at).toISOString().slice(0, 10);
-  return `${slug || "render"}-${date}.png`;
+  return `${slug || "render"}-${date}.${file.file_ext || "png"}`;
 }
 
 export function GeneratedFilesGallery({

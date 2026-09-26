@@ -362,7 +362,8 @@ export function AdvancedProjectEditor({ token, initialProject }: AdvancedProject
           <a
             href={previews.result}
             download={`ai-render-${project.id}.${
-              aiConfig.output_format === "jpeg" ? "jpg" : aiConfig.output_format
+              project.result_image_path?.match(/\.(jpe?g|png|webp)$/i)?.[1].toLowerCase().replace("jpeg", "jpg") ??
+              (aiConfig.output_format === "jpeg" ? "jpg" : aiConfig.output_format)
             }`}
             className="mt-4 inline-block"
           >
