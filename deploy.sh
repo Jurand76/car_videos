@@ -9,6 +9,7 @@ REPO_URL="https://github.com/Jurand76/car_videos.git"
 REPO_DIR="/opt/car_videos"
 BRANCH="main"
 DOCKER_COMPOSE_FILE="docker-compose.mikrus.yml"
+ENV_FILE="project.env"
 
 # Color output
 RED='\033[0;31m'
@@ -110,15 +111,15 @@ main() {
     # Step 7: Stop containers
     log_info "Stopping containers..."
     # --remove-orphans usuwa też stare kontenery (np. gateway/studio wideo)
-    docker compose -f "$DOCKER_COMPOSE_FILE" down --remove-orphans || true
+    docker compose -f "$DOCKER_COMPOSE_FILE" --env-file "$ENV_FILE" down --remove-orphans || true
     
     # Step 8: Build images
     log_info "Building Docker images (no cache)..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" build --no-cache
+    docker compose -f "$DOCKER_COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache
     
     # Step 9: Start containers
     log_info "Starting containers..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" up -d --remove-orphans
+    docker compose -f "$DOCKER_COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans
     
     # Step 10: Wait for services to be ready
     log_info "Waiting for services to be ready..."
@@ -126,11 +127,11 @@ main() {
     
     # Step 11: Verify services
     log_info "Verifying services..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" ps
+    docker compose -f "$DOCKER_COMPOSE_FILE" --env-file "$ENV_FILE" ps
     
     # Step 12: Check API health
     log_info "Checking API health..."
-    API_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/v1/service/staff || echo "000")
+    API_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:30133/api/v1/service/staff || echo "000")
     if [ "$API_HEALTH" = "200" ] || [ "$API_HEALTH" = "401" ]; then
         log_info "API is responding (HTTP $API_HEALTH)"
     else
@@ -139,7 +140,7 @@ main() {
     
     # Step 13: Show logs summary
     log_info "Recent logs (last 20 lines from each service):"
-    docker compose -f "$DOCKER_COMPOSE_FILE" logs --tail=20
+    docker compose -f "$DOCKER_COMPOSE_FILE" --env-file "$ENV_FILE" logs --tail=20
     
     log_info "✅ Deployment completed successfully!"
     log_info "Access the application at:"
