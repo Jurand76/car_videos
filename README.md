@@ -1,21 +1,21 @@
-# AUTKA.PL — zdjęcia + videoprezentacja
+# AUTKA.PL — zdjęcia produktowe + serwis
 
-Jeden katalog, jeden terminal.
+Jeden katalog, jeden terminal. Moduł wideo (Remotion) został usunięty —
+ostatni stan z wideo jest w tagu `archiwum-wideo`.
 
 ## Pierwsze uruchomienie
 
 ```bash
-npm run setup
 cp project.env.example project.env   # jedyny plik konfiguracji — uzupełnij klucze
-npm run setup                        # wygeneruje photos/web/.env.local z project.env
+npm run setup                        # zależności + photos/web/.env.local z project.env
 ```
 
-Wymagane: **Node.js**, **Docker** (PostgreSQL + API zdjęć).
+Wymagane: **Node.js**, **Docker** (PostgreSQL + API).
 
-## Dev — wszystko naraz
+## Dev
 
 ```bash
-npm run dev:all
+npm run dev
 ```
 
 | Usługa | URL |
@@ -23,25 +23,21 @@ npm run dev:all
 | **Logowanie** | http://localhost:3010/login |
 | **Hub (po logowaniu)** | http://localhost:3010/hub |
 | **Zdjęcia** | http://localhost:3010/dashboard |
-| **Wideo** | http://localhost:3010/video (ten sam port co hub — proxy do gateway) |
-| **Remotion Studio** | http://localhost:3000 |
-| **API zdjęć** | http://localhost:8010 |
+| **Serwis** | http://localhost:3010/service |
+| **API** | http://localhost:8010 |
 
-Flow: **login → hub → zdjęcia albo wideo**. Wejdź na http://localhost:3010 (przekieruje na login).
+Flow: **login → hub → zdjęcia albo serwis**.
 
 ## Struktura
 
 ```
 projekt_autka/
-├── hub/           # (legacy statyczny — hub jest w photos/web /hub)
-├── panel/         # panel videoprezentacji (/video)
-├── server/        # API wideo + gateway
-├── src/           # Remotion
 ├── photos/
-│   ├── web/       # Next.js — generator zdjęć
-│   └── api/       # FastAPI — backend zdjęć (Docker)
-├── public/        # assety wideo (uploads/audio/)
-├── generated/     # project.json
+│   ├── web/       # Next.js — panel (zdjęcia + serwis)
+│   └── api/       # FastAPI — backend (Docker)
+├── scripts/       # prepare-env, ensure-api, check-dev-ports
+├── docker-compose.yml         # lokalnie: postgres + api
+├── docker-compose.mikrus.yml  # produkcja: postgres + api + web
 └── project.env    # jedyne źródło konfiguracji (szablon: project.env.example)
 ```
 
@@ -49,8 +45,8 @@ projekt_autka/
 
 | Skrypt | Opis |
 |--------|------|
-| `npm run dev:all` | Docker (DB+API) + zdjęcia web + Studio + gateway |
-| `npm run dev:gateway` | Tylko hub + panel wideo (:4000) |
-| `npm run dev:photos:web` | Tylko Next.js zdjęć (:3010) |
-| `npm run dev` | Tylko Remotion Studio (:3000) |
-| `npm run dev:studio` | Studio z `--force-new` (gdy port 3000 „zajęty”) |
+| `npm run dev` | Docker (DB + API :8010) + Next.js (:3010) |
+| `npm run dev:photos:api` | Tylko Docker (DB + API) |
+| `npm run dev:photos:web` | Tylko Next.js (:3010) |
+
+Wdrożenie na Mikrusa: patrz [DEPLOYMENT.md](DEPLOYMENT.md).

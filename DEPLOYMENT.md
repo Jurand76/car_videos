@@ -12,7 +12,7 @@ bash /opt/car_videos/deploy.sh
 That's it! The script will:
 1. ✅ Pull latest `serwis` branch from GitHub (using stored PAT)
 2. ✅ Rebuild all Docker containers (no-cache for fresh builds)
-3. ✅ Restart services (gateway, web, api, postgres)
+3. ✅ Restart services (web, api, postgres)
 4. ✅ Verify API health
 5. ✅ Show deployment status
 

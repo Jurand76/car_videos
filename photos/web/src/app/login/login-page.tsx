@@ -79,7 +79,7 @@ export default function LoginPage() {
       <Card className="w-full">
         <h1 className="text-2xl font-bold">Logowanie</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Zaloguj się, żeby wejść w zdjęcia lub videoprezentację
+          Zaloguj się, żeby wejść w zdjęcia lub serwis
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">

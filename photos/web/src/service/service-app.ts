@@ -61,14 +61,16 @@ function fmtMoney(v) {
   return n.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " zł";
 }
 
+// Dwie kolumny kwot (sprzedaż, dochód) — zawsze obecne, żeby siatka się nie rozjeżdżała
 function repairListMoneyHtml(repair) {
   const grand = Number(repair.grand_total || 0);
   const purchase = Number(repair.purchase_total || 0);
-  if (grand <= 0 && purchase <= 0) return "";
-  const income = grand - purchase;
+  if (grand <= 0 && purchase <= 0) {
+    return `<span class="repair-amount"></span><span class="repair-amount"></span>`;
+  }
   return `
-    <span class="repair-meta-money">💰 ${fmtMoney(grand)}</span>
-    <span class="repair-meta-money repair-meta-income">💰 ${fmtMoney(income)}</span>`;
+    <span class="repair-amount">💰 ${fmtMoney(grand)}</span>
+    <span class="repair-amount repair-meta-income">💰 ${fmtMoney(repairIncome(repair))}</span>`;
 }
 
 function customerName(c) {
@@ -246,10 +248,55 @@ function renderRepairs(items) {
     list.innerHTML = banner + `<div class="list-empty">Brak napraw. Dodaj pierwsze zlecenie przyciskiem powyżej.</div>`;
     return;
   }
-  list.innerHTML = banner + items.map((r) => {
+  list.innerHTML = banner + groupRepairsByMonth(items).map((g) => `
+    <div class="month-head">
+      <h2 class="month-title">${esc(g.label)}</h2>
+      <span></span>
+      <span></span>
+      <span class="repair-amount month-income"><span class="month-income-label">dochód:</span> ${fmtMoney(g.income)}</span>
+    </div>
+    ${g.items.map(repairItemHtml).join("")}
+  `).join("");
+}
+
+const MONTHS_PL = [
+  "styczeń", "luty", "marzec", "kwiecień", "maj", "czerwiec",
+  "lipiec", "sierpień", "wrzesień", "październik", "listopad", "grudzień",
+];
+
+function repairIncome(r) {
+  return Number(r.grand_total || 0) - Number(r.purchase_total || 0);
+}
+
+// Grupy miesięczne wg daty przyjęcia, od najnowszego miesiąca
+function groupRepairsByMonth(items) {
+  const groups = new Map();
+  [...items]
+    .sort((a, b) => String(b.received_at || "").localeCompare(String(a.received_at || "")))
+    .forEach((r) => {
+      const d = r.received_at ? new Date(r.received_at) : null;
+      const key = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` : "brak";
+      if (!groups.has(key)) {
+        groups.set(key, {
+          label: d ? `${MONTHS_PL[d.getMonth()]} ${d.getFullYear()}` : "Bez daty",
+          income: 0,
+          items: [],
+        });
+      }
+      const g = groups.get(key);
+      g.items.push(r);
+      g.income += repairIncome(r);
+    });
+  // W miesiącu: najpierw niewydane, potem wydane (kolejność dat zachowana — sort stabilny)
+  const handed = (r) => (r.status === "handed_over" ? 1 : 0);
+  groups.forEach((g) => g.items.sort((a, b) => handed(a) - handed(b)));
+  return [...groups.values()];
+}
+
+function repairItemHtml(r) {
     const car = carsCache.find((c) => c.id === r.car_id);
     return `
-    <div class="list-item">
+    <div class="list-item repair-row${r.status === "handed_over" ? " repair-row-compact" : ""}">
       <div class="list-item-main">
         <p class="list-item-title">${car ? `${esc(car.make)} ${esc(car.model)} (${esc(car.plate)})` : "Auto usunięte"}</p>
         <div class="list-item-meta">
@@ -257,16 +304,15 @@ function renderRepairs(items) {
           <span class="badge badge-${r.status}">${statusLabel(r.status)}</span>
           <span>📅 Przyjęto: ${fmtDate(r.received_at)}</span>
           ${r.completed_at ? `<span>✓ Zakończono: ${fmtDate(r.completed_at)}</span>` : ""}
-          ${repairListMoneyHtml(r)}
         </div>
       </div>
+      ${repairListMoneyHtml(r)}
       <div class="list-item-actions">
         <button class="btn btn-row" data-preview-repair="${r.id}">Podgląd</button>
         <button class="btn btn-row" data-edit-repair="${r.id}">Edytuj</button>
         <button class="btn btn-row btn-row-danger" data-del-repair="${r.id}">Usuń</button>
       </div>
     </div>`;
-  }).join("");
 }
 
 /* ═══════════════════════════════════════════════
@@ -1233,6 +1279,11 @@ export function initServiceApp(root: HTMLElement, accessToken: string): () => vo
     showView(view, false);
   };
   window.addEventListener("popstate", onPopState);
+  const onServiceHome = () => {
+    closeModal();
+    showView("home", window.location.hash !== "#home");
+  };
+  window.addEventListener("service:home", onServiceHome);
 
   $("#customer-search")?.addEventListener("input", debounce((e: Event) => loadCustomers((e.target as HTMLInputElement).value), 350));
   $("#car-search")?.addEventListener("input", debounce((e: Event) => loadCars((e.target as HTMLInputElement).value), 350));
@@ -1252,6 +1303,7 @@ export function initServiceApp(root: HTMLElement, accessToken: string): () => vo
 
   return () => {
     window.removeEventListener("popstate", onPopState);
+    window.removeEventListener("service:home", onServiceHome);
     mountCtx = null;
   };
 }

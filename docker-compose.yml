@@ -29,7 +29,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production-32chars}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-10080}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3010,http://localhost:4000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3010}
       UPLOAD_DIR: /app/storage/uploads
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
     env_file:

@@ -20,9 +20,9 @@ const check = (port, path = "/login") =>
   const web = await check(3010);
   if (web.ok && /vAutomate/i.test(web.body)) {
     console.error(
-      "\n[dev:all] Port 3010 serwuje STARY projekt car_photos (vAutomate).\n" +
+      "\n[dev] Port 3010 serwuje STARY projekt car_photos (vAutomate).\n" +
         "Zatrzymaj go: docker stop car_photos-web-1\n" +
-        "Potem uruchom ponownie: npm run dev:all\n",
+        "Potem uruchom ponownie: npm run dev\n",
     );
     process.exit(1);
   }

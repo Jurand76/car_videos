@@ -4,12 +4,9 @@ import { Card } from "@/components/ui/card";
 
 type ProductHubCardsProps = {
   photosHref: string;
-  videoHref: string;
 };
 
-export function ProductHubCards({ photosHref, videoHref }: ProductHubCardsProps) {
-  const videoExternal = videoHref.startsWith("http");
-
+export function ProductHubCards({ photosHref }: ProductHubCardsProps) {
   return (
     <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 sm:auto-rows-fr">
       <Link href={photosHref} className="group block h-full text-left">
@@ -22,30 +19,6 @@ export function ProductHubCards({ photosHref, videoHref }: ProductHubCardsProps)
           cta="Otwórz projekt zdjęć →"
         />
       </Link>
-
-      {videoExternal ? (
-        <a href={videoHref} className="group block h-full text-left no-underline">
-          <HubCard
-            badge="Wideo"
-            badgeClassName="bg-teal-100 text-teal-800"
-            hoverBorderClassName="hover:border-teal-400"
-            title="Videoprezentacja"
-            description="Złóż reel z muzyką i beatami: slajdy, przejścia, teksty AI i podgląd w Remotion Studio."
-            cta="Otwórz panel wideo →"
-          />
-        </a>
-      ) : (
-        <Link href={videoHref} className="group block h-full text-left">
-          <HubCard
-            badge="Wideo"
-            badgeClassName="bg-teal-100 text-teal-800"
-            hoverBorderClassName="hover:border-teal-400"
-            title="Videoprezentacja"
-            description="Złóż reel z muzyką i beatami: slajdy, przejścia, teksty AI i podgląd w Remotion Studio."
-            cta="Otwórz panel wideo →"
-          />
-        </Link>
-      )}
 
       <Link href="/service" className="group block h-full text-left">
         <HubCard

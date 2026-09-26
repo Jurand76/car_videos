@@ -1,7 +1,0 @@
-@import "tailwindcss";
-@source "./**/*.{tsx,ts,jsx,js}";
-@source not "../photos/**";
-@source not "../panel/**";
-@source not "../server/**";
-@source not "../generated/**";
-@source not "../scripts/**";

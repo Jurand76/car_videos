@@ -3,12 +3,9 @@ import Link from "next/link";
 import { auth, signOut } from "@/auth";
 import { ModuleNav } from "@/components/module-nav";
 import { Button } from "@/components/ui/button";
-import { getVideoPanelUrl } from "@/lib/video-panel";
 
 export async function Header() {
   const session = await auth();
-  const videoHref =
-    session?.accessToken != null ? getVideoPanelUrl(session.accessToken) : null;
 
   return (
     <header className="border-b border-slate-200 bg-white">
@@ -19,7 +16,7 @@ export async function Header() {
         <nav className="flex items-center gap-4">
           {session ? (
             <>
-              <ModuleNav videoHref={videoHref} />
+              <ModuleNav />
               <span className="hidden text-sm text-slate-500 sm:inline">{session.user.email}</span>
               <form
                 action={async () => {

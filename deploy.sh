@@ -109,16 +109,16 @@ main() {
     
     # Step 7: Stop containers
     log_info "Stopping containers..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" down || true
+    # --remove-orphans usuwa też stare kontenery (np. gateway/studio wideo)
+    docker compose -f "$DOCKER_COMPOSE_FILE" down --remove-orphans || true
     
     # Step 8: Build images
     log_info "Building Docker images (no cache)..."
     docker compose -f "$DOCKER_COMPOSE_FILE" build --no-cache
     
-    # Step 9: Start containers (studio tworzone, ale nie uruchamiane — start z panelu wideo)
+    # Step 9: Start containers
     log_info "Starting containers..."
-    docker compose -f "$DOCKER_COMPOSE_FILE" up -d
-    docker compose -f "$DOCKER_COMPOSE_FILE" --profile studio up -d --no-start studio || true
+    docker compose -f "$DOCKER_COMPOSE_FILE" up -d --remove-orphans
     
     # Step 10: Wait for services to be ready
     log_info "Waiting for services to be ready..."

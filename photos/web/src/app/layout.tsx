@@ -6,8 +6,8 @@ import { Providers } from "@/components/providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AUTKA.PL — zdjęcia i videoprezentacje",
-  description: "Generator zdjęć produktowych i videoprezentacje motoryzacyjne",
+  title: "AUTKA.PL — zdjęcia i serwis",
+  description: "Generator zdjęć produktowych i obsługa serwisowa",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

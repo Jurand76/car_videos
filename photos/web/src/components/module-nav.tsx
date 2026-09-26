@@ -3,14 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type ModuleNavProps = {
-  videoHref: string | null;
-};
-
 const linkClass = "text-sm text-slate-600 hover:text-slate-900";
 const activeClass = "text-sm font-semibold text-brand-600";
 
-export function ModuleNav({ videoHref }: ModuleNavProps) {
+export function ModuleNav() {
   const pathname = usePathname();
   const isStart = pathname === "/hub";
   const isPhotos = pathname.startsWith("/dashboard");
@@ -32,15 +28,20 @@ export function ModuleNav({ videoHref }: ModuleNavProps) {
           Zdjęcia
         </Link>
       )}
-      {videoHref ? (
-        <a href={videoHref} className={linkClass}>
-          Wideo
-        </a>
-      ) : null}
       {isService ? (
-        <span className={activeClass}>Serwis</span>
+        // Na /service zawsze wraca do menu głównego serwisu (#home), nawet z widoków głębiej
+        <a
+          href="/service#home"
+          className={activeClass}
+          onClick={(e) => {
+            e.preventDefault();
+            window.dispatchEvent(new Event("service:home"));
+          }}
+        >
+          Serwis
+        </a>
       ) : (
-        <Link href="/service" className={linkClass}>
+        <Link href="/service#home" className={linkClass}>
           Serwis
         </Link>
       )}

@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { ProductHubCards } from "@/components/product-hub-cards";
-import { getVideoPanelUrl } from "@/lib/video-panel";
 
 export default async function HubPage() {
   const session = await auth();
@@ -21,10 +20,7 @@ export default async function HubPage() {
         </p>
       </div>
 
-      <ProductHubCards
-        photosHref="/dashboard"
-        videoHref={getVideoPanelUrl(session.accessToken)}
-      />
+      <ProductHubCards photosHref="/dashboard" />
     </div>
   );
 }

@@ -1,11 +1,9 @@
 # Mikrus VPS — bob133.mikrus.xyz
 # Web:    https://bob133-20133.wykr.es  (:20133 → web:3000)
 # API:    https://bob133-30133.wykr.es  (:30133 → api:8000)
-# Studio: https://bob133-40463.wykr.es  (:40463 → studio:3000)
-# Wideo:  https://bob133-20133.wykr.es/video (Next → gateway:4000)
 #
 # Uruchomienie:
-#   docker compose -f docker-compose.mikrus.yml --env-file project.env up -d --build
+#   docker compose -f docker-compose.mikrus.yml --env-file project.env up -d --build --remove-orphans
 
 name: car_photos
 
@@ -70,62 +68,12 @@ services:
     networks:
       - internal
 
-  gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile.gateway
-    restart: unless-stopped
-    env_file:
-      - project.env
-    environment:
-      PORT: 4000
-      REMOTION_GPU_RENDER: "0"
-      REMOTION_HARDWARE_ACCELERATION: "disabled"
-      REMOTION_RENDER_PROFILE: "fast"
-      PHOTOS_WEB_URL: ${WEB_URL:?Ustaw WEB_URL w project.env}
-      PHOTOS_API_URL: http://api:8000
-      HUB_URL: ${WEB_URL}/hub
-      CORS_ORIGINS: ${CORS_ORIGINS:?Ustaw CORS_ORIGINS w project.env}
-      STUDIO_URL: ${STUDIO_URL:?Ustaw STUDIO_URL w project.env}
-      STUDIO_DOCKER_CONTROL: "1"
-      STUDIO_CONTAINER_NAME: car_photos-studio-1
-      STUDIO_INTERNAL_URL: http://studio:3000
-      STUDIO_IDLE_MS: ${STUDIO_IDLE_MS:-1800000}
-    volumes:
-      - gateway_generated:/app/generated
-      - gateway_public:/app/public
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      api:
-        condition: service_started
-    networks:
-      - internal
-
-  studio:
-    profiles: ["studio"]
-    build:
-      context: .
-      dockerfile: Dockerfile.gateway
-    restart: unless-stopped
-    ports:
-      - "${STUDIO_PORT:-40463}:3000"
-    environment:
-      NODE_ENV: development
-      REMOTION_STUDIO_VPS: "1"
-    volumes:
-      - gateway_generated:/app/generated
-      - gateway_public:/app/public
-    command: ["/usr/local/bin/studio-entrypoint.sh"]
-    networks:
-      - internal
-
   web:
     build:
       context: ./photos/web
       dockerfile: Dockerfile.prod
       args:
         NEXT_PUBLIC_API_URL: ${API_URL:?Ustaw API_URL w project.env}
-        NEXT_PUBLIC_GATEWAY_URL: http://gateway:4000
     restart: unless-stopped
     ports:
       - "20133:3000"
@@ -133,11 +81,8 @@ services:
       NEXTAUTH_URL: ${WEB_URL:?Ustaw WEB_URL w project.env}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Ustaw NEXTAUTH_SECRET w project.env}
       API_URL: http://api:8000
-      NEXT_PUBLIC_GATEWAY_URL: http://gateway:4000
     depends_on:
       api:
-        condition: service_started
-      gateway:
         condition: service_started
     networks:
       - internal
@@ -149,8 +94,6 @@ volumes:
   api_storage:
     external: true
     name: car_photos_api_storage
-  gateway_generated:
-  gateway_public:
 
 networks:
   internal:

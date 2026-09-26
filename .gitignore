@@ -11,9 +11,10 @@ photos/web/.env.local
 photos/api/storage
 photos/api/**/__pycache__
 **/*.pyc
-public/uploads
 
-# Ignore the output video from Git but not videos you import into src/.
+# Pozostałości po usuniętym module wideo (Remotion) — pliki zostają lokalnie,
+# kod jest w tagu archiwum-wideo
+public/uploads
 out
 probe-err*.txt
 nul
@@ -23,3 +24,4 @@ generated/exports/
 # FFmpeg NVENC (Windows, ~100 MB po setup:nvenc)
 tools/remotion-bin-win/
 tools/.cache/
+*.tsbuildinfo

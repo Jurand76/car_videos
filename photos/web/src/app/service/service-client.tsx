@@ -123,7 +123,7 @@ export function ServiceClient({ accessToken }: ServiceClientProps) {
               placeholder="Szukaj po statusie…"
             />
           </div>
-          <div id="repair-list" className="list-grid" />
+          <div id="repair-list" className="list-grid repair-grid" />
         </section>
 
         <div id="modal-root" className="modal-root" hidden>

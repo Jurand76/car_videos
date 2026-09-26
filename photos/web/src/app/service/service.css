@@ -123,6 +123,26 @@
 .list-item-meta { font-size: 0.8rem; line-height: 1.25; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .repair-meta-money { font-weight: 600; color: var(--text); white-space: nowrap; }
 .repair-meta-income { color: var(--green); }
+/* Usługi: wspólna siatka (subgrid) — kwoty wszystkich wierszy i sumy miesięcy w jednej kolumnie */
+.repair-grid { grid-template-columns: minmax(0, 1fr) auto auto auto; column-gap: 20px; }
+.repair-grid > .filter-banner, .repair-grid > .list-empty { grid-column: 1 / -1; }
+.repair-row, .month-head { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
+.repair-amount { font-weight: 600; color: var(--text); white-space: nowrap; text-align: right; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.repair-amount.repair-meta-income, .repair-amount.month-income { color: var(--green); }
+.repair-row .list-item-actions { justify-content: flex-end; margin-left: 16px; }
+.repair-row:hover { background: #f0fdf4; border-color: #bbf7d0; }
+.month-income-label { color: #334155; font-weight: 600; }
+.month-head {
+  margin-top: 14px; padding: 10px 17px 0; border-top: 1px solid var(--border);
+}
+.month-head:first-child, .filter-banner + .month-head { margin-top: 0; }
+.month-title { margin: 0; font-size: 1.05rem; font-weight: 700; text-transform: capitalize; }
+.month-income { font-weight: 700; color: var(--green); font-size: 0.95rem; }
+/* Wydane — niski wiersz: nr, status, daty obok marki i rejestracji */
+.repair-row-compact { padding-top: 5px; padding-bottom: 5px; }
+.repair-row-compact .list-item-main { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.repair-row-compact .list-item-title { margin: 0; }
+.repair-row-compact .list-item-actions .btn { padding-top: 3px; padding-bottom: 3px; }
 .list-item-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .list-empty { padding: 48px 20px; text-align: center; color: var(--muted); font-size: 0.95rem; }
 
@@ -271,6 +291,10 @@
   .form-row { grid-template-columns: 1fr; }
   .item-row { grid-template-columns: 1fr 1fr; }
   .items-summary-grid { grid-template-columns: 1fr; gap: 10px; }
+  .repair-grid { grid-template-columns: 1fr auto; }
+  .repair-row, .month-head { grid-template-columns: 1fr auto; row-gap: 4px; }
+  .repair-row .list-item-main, .repair-row .list-item-actions { grid-column: 1 / -1; }
+  .month-head > span:empty { display: none; }
 }
 
 @media (max-width: 900px) {

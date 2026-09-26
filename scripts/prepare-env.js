@@ -7,7 +7,6 @@ const photosEnvPath = path.join(__dirname, "..", "photos", "web", ".env.local");
 const NEXT_KEYS = [
   "API_URL",
   "NEXT_PUBLIC_API_URL",
-  "NEXT_PUBLIC_GATEWAY_URL",
   "NEXTAUTH_URL",
   "NEXTAUTH_SECRET",
 ];
@@ -38,7 +37,7 @@ const parseEnvFile = (content) => {
 
 if (!fs.existsSync(projectEnvPath)) {
   console.log(
-    "Brak project.env — skopiuj project.env.example jako project.env przed pierwszym dev:all",
+    "Brak project.env — skopiuj project.env.example jako project.env przed pierwszym npm run dev",
   );
   process.exit(0);
 }
