@@ -1,8 +1,6 @@
 services:
-  # Opcjonalna lokalna baza — domyślnie używamy car_photos-postgres (:5432).
-  # Uruchomienie: docker compose --profile local-db up -d
+  # Lokalna baza — projekt działa samodzielnie, bez car_photos.
   postgres:
-    profiles: ["local-db"]
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -38,20 +36,12 @@ services:
       - project.env
     volumes:
       - ./photos/api:/app
-      # Współdzielony storage z legacy car_photos — inaczej miniatury 404 (puste uploads)
       - photos_api_storage:/app/storage
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    networks:
-      - default
-      - car_photos
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
   photos_api_storage:
-    external: true
-    name: car_photos_api_storage
-
-networks:
-  car_photos:
-    external: true
-    name: car_photos_default

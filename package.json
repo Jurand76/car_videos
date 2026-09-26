@@ -40,7 +40,7 @@
     "dev:studio": "remotion studio --force-new",
     "dev:gateway": "tsx watch server/index.ts",
     "dev:photos:web": "npm run dev --prefix photos/web -- --port 3010",
-    "dev:photos:api": "node scripts/ensure-api.js && docker compose --env-file project.env up -d --no-deps api",
+    "dev:photos:api": "node scripts/ensure-api.js && docker compose --env-file project.env up -d api",
     "dev:stack": "node scripts/check-dev-ports.js && concurrently -n api,photos,gateway -c yellow,cyan,magenta \"npm run dev:photos:api\" \"npm run dev:photos:web\" \"npm run dev:gateway\"",
     "dev:all": "node scripts/check-dev-ports.js && concurrently -n api,photos,studio,gateway -c yellow,cyan,blue,magenta \"npm run dev:photos:api\" \"npm run dev:photos:web\" \"npm run dev:studio\" \"npm run dev:gateway\"",
     "build": "remotion bundle",

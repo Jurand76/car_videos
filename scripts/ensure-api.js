@@ -28,15 +28,6 @@ const apiUp = () =>
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const tryStart = (command) => {
-  try {
-    execSync(command, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 (async () => {
   if (!dockerOk()) {
     console.error(
@@ -54,15 +45,8 @@ const tryStart = (command) => {
 
   console.log("[ensure-api] Backend na :8010 nie odpowiada — uruchamiam…");
 
-  if (!tryStart("docker start car_photos-postgres-1")) {
-    console.warn(
-      "[ensure-api] Brak car_photos-postgres-1 — uruchom: docker start car_photos-postgres-1",
-    );
-  } else {
-    await sleep(3000);
-  }
-
-  execSync("docker compose --env-file project.env up -d --no-deps api", {
+  // Startuje też lokalny postgres (depends_on w docker-compose.yml)
+  execSync("docker compose --env-file project.env up -d api", {
     cwd: root,
     stdio: "inherit",
   });
@@ -78,7 +62,7 @@ const tryStart = (command) => {
   console.error(
     "[ensure-api] API nie wstało na :8010.\n" +
       "  → docker logs projekt_autka-api-1\n" +
-      "  → sprawdź czy car_photos-postgres działa: docker ps | grep postgres",
+      "  → sprawdź czy postgres działa: docker compose ps postgres",
   );
   process.exit(1);
 })();
